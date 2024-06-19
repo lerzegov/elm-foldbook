@@ -380,7 +380,7 @@ view curEnv model =
         [ 
         -- title and dim trays
         column [] -- styles of trays set in DnDTray group styles
-        [ viewTitle model
+        [ row [width fill, spacing 6] [logo, viewTitle model]
             , column [ UiFont.size 14, width (px lenSpreadsheetWidth) ] -- cannot set dynamically to max width of container elements
                 [ Element.map DnDTrayMsg <| DnDTray.pageTrayView model.dndTrayModel
                 -- brought row tray and column tray together for easier reshaping
@@ -406,9 +406,10 @@ view curEnv model =
 
 
 
-        
-
-
+logo : Element Msg
+logo =
+    el [ height (px 60), width (px 250), alignLeft ]
+        (Element.image [  ] { src = "/assets/logo.png", description = "elmFoldbook Logo" })     
 
 
 stickyTopHeaderAttrs : List (Attribute msg)
@@ -428,12 +429,12 @@ viewTitle model =
     let
         titleText = model.spreadsheetUIModel.curDatasetView.name
     in
-    el ([ UiFont.bold
-        , UiFont.size 20
-        , paddingEach {top=10, bottom=4, left=0, right=0}
+    el ([ UiFont.size 40
+        , UiFont.family [(UiFont.typeface "Raleway"), UiFont.sansSerif]
+        , paddingEach {top=12, bottom=8, left=0, right=0}
         --, alignLeft
-        --, centerY
-        , height (px 30)
+        , centerY
+        , height fill
         , width fill --(px 600)
         , Background.color MyColors.white
         ] ++ stickyLeftHeaderAttrs)

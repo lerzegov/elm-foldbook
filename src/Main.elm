@@ -3,7 +3,8 @@ module Main exposing (..)
 import Browser
 import Browser.Navigation as Navigation
 import Html exposing (Html, div, text)
-import Element exposing (Element, layout)
+import Element exposing (..)
+import Element.Font exposing (Font)
 import Home
 import DatasetPage
 import Routes exposing (..)
@@ -119,7 +120,7 @@ view model =
             in
             case model.page of
                 HomePage ->
-                    "foldModel: " ++ modelRef ++ " Home"   
+                    "foldBook: " ++ modelRef ++ " Home"   
 
                 DatasetPage datasetName ->
                     "foldSheet: " ++ modelRef ++ " " ++ datasetName

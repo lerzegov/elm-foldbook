@@ -763,6 +763,24 @@ twoNumbers fInt fFloat implementation moduleName =
                     calcDAr = { dAr | data = calcData }  
                 in
                 EvalResult.succeed <| (XModel.dataArrayWithDimsToValue calcDAr)
+            [DataAr ar, Int ri] ->
+                let
+                    dAr = XModel.valueToDataArray (DataAr ar)
+                    intToFloat = toFloat ri
+                    calcData = Array.map (\x -> fFloat x intToFloat) dAr.data
+                    calcDAr = { dAr | data = calcData }  
+
+                in
+                EvalResult.succeed <| (XModel.dataArrayWithDimsToValue calcDAr)
+
+            [Int li, DataAr ar] ->
+                let
+                    dAr = XModel.valueToDataArray (DataAr ar)
+                    intToFloat = toFloat li
+                    calcData = Array.map (\x -> fFloat intToFloat x ) dAr.data
+                    calcDAr = { dAr | data = calcData }  
+                in
+                EvalResult.succeed <| (XModel.dataArrayWithDimsToValue calcDAr)
                 
             [ DataAr la, DataAr ra ] ->
                 let

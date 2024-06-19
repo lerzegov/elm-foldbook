@@ -1182,7 +1182,6 @@ topLeftCorner gridAreaTopLeft =
         -- per sticky partire da 1/1/-1/-1 e cambiare pos fino a cui si blocca + 1, qui y4
         , htmlAttribute <| style "grid-area" gridAreaTopLeft -- xStart/yStart/xEnd+1/yEnd+1 1-based
         , htmlAttribute <| style "position" "sticky"
-        , htmlAttribute <| style "top" "130px"
         , htmlAttribute <| style "left" "0px"
         , htmlAttribute <| style "z-index" "3"
         , Background.color lightGray
@@ -1214,7 +1213,6 @@ columnHeadersContainer columnHeaderArg gridAreaCol =
         -- cambiare pos fino a cui si blocca + 1, qui x1 (1 riga) come gSheet
         , htmlAttribute <| style "grid-area" gridAreaCol
         , htmlAttribute <| style "position" "sticky"
-        , htmlAttribute <| style "top" "130px"
         , htmlAttribute <| style "z-index" "2"
         , Border.color MyColors.darkGray
         , Border.width 1
@@ -1339,8 +1337,10 @@ viewPivotTableFromSpreadsheetView model xModel =
             ) (List.range 0 (numRowsData - 1))
 
     in
+    Element.el
+        [ Element.scrollbarY, width fill, height fill ]
     -- row height and col width arre best set here at css grid level
-    Element.paragraph
+    (Element.paragraph
         [ htmlAttribute <| style "display" "inline-grid"
         -- , htmlAttribute <| style "grid-template-areas" "'col-headers col-headers' 'row-headers data-cells'"
         , htmlAttribute <| style "grid-template-rows"    <| String.join " " <| List.repeat (colDepth + XModel.getWidth rowGroup) "auto"
@@ -1354,18 +1354,18 @@ viewPivotTableFromSpreadsheetView model xModel =
         ]
         [ if xor (colDepth == 0) (rowDepth == 0) then 
             Element.none
-          else
+        else
             topLeftCorner ("1/1/" ++ String.fromInt (colDepth + 1) ++ "/" ++ String.fromInt (rowDepth + 1))
         , if rowDepth > 0 then
             rowHeadersContainer rowHeaders ("1/1/-1/" ++ String.fromInt (rowDepth + 1))
-          else 
+        else 
             Element.none
         , if colDepth > 0 then 
             columnHeadersContainer colHeaders ("1/1/" ++ String.fromInt (colDepth + 1) ++ "/-1")
-          else
+        else
             Element.none
         , dataCellsContainer dataCells
-        ]
+        ])
 
 getColumnWidths : Int -> Array Int -> String
 getColumnWidths nrHeaderColumns dataColumnWidths =

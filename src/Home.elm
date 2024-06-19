@@ -8,6 +8,11 @@ import CalcEngine
 import Ports
 import Element.Font exposing (Font)
 import Element.Font as Font
+import Element.Background as Background
+import Element.Border as Border
+import Element.Input as Input
+import Html exposing (Html)
+import Html.Attributes exposing (id)
 
 type alias Model =
     { env : Result Error Env
@@ -44,20 +49,38 @@ view model =
             Just xModel -> xModel.datasetRefs
             Nothing  -> []
     in
-    column [Font.size 20]
-        [ text "Datasets:"
-        , column [Font.size 18]
-            (List.map datasetLink datasetList)
+    column [ spacing 20, padding 20 ]
+        [ logo
+        , header "Welcome to elm-foldBook"
+        , textPrompt
+        , datasetListView datasetList
         ]
+
+header : String -> Element Msg
+header title =
+    el [ Font.size 32, Font.bold, alignTop, centerX, padding 20 ] (text title)
+
+logo : Element Msg
+logo =
+    el [ height (px 60), width (px 250), alignLeft ]
+        (Element.image [  ] { src = "/assets/logo.png", description = "elmFoldbook Logo" })
+
+
+textPrompt : Element Msg
+textPrompt =
+    el [ Font.size 20, Font.italic, centerX, padding 10 ]
+        (text "Click to open a foldSheet")
+
+datasetListView : List String -> Element Msg
+datasetListView datasets =
+    column [ spacing 10, centerX ]
+        (List.map datasetLink datasets)
 
 datasetLink : String -> Element Msg
 datasetLink datasetName =
-    el []
-        (link [ onClick (OpenDataset datasetName) ] 
-            { url = "#"
-            , label = (text datasetName)
-            }
-        )
+    el [ padding 10, Border.width 1, Border.color (Element.rgb 0 0 0), Border.rounded 5, Background.color (Element.rgb 240 240 240), Font.size 18, Font.bold, centerX ]
+        (Input.button [  ]
+                { onPress = Just (OpenDataset datasetName), label = text datasetName } )
 
 openDatasetInNewTab : String -> Cmd Msg
 openDatasetInNewTab datasetName =
