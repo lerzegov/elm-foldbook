@@ -5,14 +5,111 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UI</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/elm/elm.js"></script> <!-- Include Elm mode -->
+    <!-- autocompletion-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/hint/show-hint.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/hint/show-hint.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/hint/anyword-hint.js"></script>
   </head>
   <body>
     <main></main>
     <script src="./dist/ui.js"></script>
     <script>
-      Elm.UI.init({
-        node: document.querySelector("main"),
-      });
+        // Custom Element Definition
+        class CodeMirrorElement extends HTMLElement {
+            connectedCallback() {
+                this.initCodeMirror();
+            }
+
+            initCodeMirror() {
+                const editorContainer = document.createElement('textarea');
+                editorContainer.value = this.getAttribute('data-initial-value') || '';
+                this.appendChild(editorContainer);
+
+                const editor = CodeMirror.fromTextArea(editorContainer, {
+                    mode: "elm",
+                    lineNumbers: true,
+                    matchBrackets: true,
+                    extraKeys: {
+                        "Ctrl-Space": "autocomplete"
+                    },
+                    hintOptions: { completeSingle: false }
+                });
+
+                editor.on("change", () => {
+                    const event = new CustomEvent('contentChanged', { detail: editor.getValue() });
+                    this.dispatchEvent(event);
+                });
+
+                // Trigger autocompletion on input
+                editor.on("inputRead", function () {
+                    editor.showHint({ hint: CodeMirror.hint.elm });
+                });
+            }
+        }
+
+        customElements.define('code-mirror-editor', CodeMirrorElement);
+
+        var app = Elm.Main.init({
+            node: document.querySelector("main"),
+        });
+
+        // Store the hints received from Elm
+        var receivedHints = [];
+
+        // Function to handle receiveHints port
+        app.ports.receiveHints.subscribe(function(hints) {
+            receivedHints = hints;
+        });
+
+        function elmHint(editor) {
+            var cur = editor.getCursor();
+            var token = editor.getTokenAt(cur);
+            var start = token.start;
+            var end = token.end;
+            var word = token.string;
+
+            // Request hints from Elm
+            app.ports.requestHints.send(word);
+
+            return {
+                list: receivedHints,
+                from: CodeMirror.Pos(cur.line, start),
+                to: CodeMirror.Pos(cur.line, end)
+            };
+        }
+
+        CodeMirror.registerHelper("hint", "elm", elmHint);
+
+        app.ports.initializeEditor.subscribe(function(args) {
+            var id = args[0];
+            var initialValue = args[1];
+
+            function initializeEditor() {
+                var editorElement = document.getElementById(id);
+                if (editorElement) {
+                    editorElement.setAttribute('data-initial-value', initialValue);
+                } else {
+                    requestAnimationFrame(initializeEditor);
+                }
+        }
+
+    requestAnimationFrame(initializeEditor);
+});
+
+
+        document.addEventListener('contentChanged', function(event) {
+            app.ports.editorContentChanged.send(event.detail);
+        });
+
+        // Handle the openNewTab port
+        app.ports.openNewTab.subscribe(function(url) {
+            window.open(url, '_blank');
+        });
     </script>
   </body>
 </html>

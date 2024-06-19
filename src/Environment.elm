@@ -1,4 +1,4 @@
-module Environment exposing (addFunction, addValue, call, empty, with)
+module Environment exposing (addFunction, addFunctionCalcOrder, addValue, call, empty, with)
 
 import Elm.Syntax.Expression exposing (FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -30,6 +30,22 @@ addFunction moduleName function env =
     }
 
 
+addFunctionCalcOrder : ModuleName -> String -> Env -> Env
+addFunctionCalcOrder moduleName funcName env =
+    let
+        curCalcOrder =
+            Maybe.withDefault []
+                (Dict.get moduleName env.functionCalcOrders)
+    in
+    { env
+        | functionCalcOrders =
+            Dict.insert
+                moduleName
+                (curCalcOrder ++ [funcName])
+                env.functionCalcOrders
+    }
+
+
 with : EnvValues -> Env -> Env
 with newValues old =
     { old | values = Dict.union newValues old.values }
@@ -40,7 +56,9 @@ empty moduleName =
     { currentModule = moduleName
     , callStack = []
     , functions = Dict.empty
+    , functionCalcOrders = Dict.empty
     , values = Dict.empty
+    , envXModel = Nothing
     }
 
 

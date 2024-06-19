@@ -25,6 +25,7 @@ import Maybe.Extra
 import Syntax exposing (fakeNode)
 import Types exposing (Eval, EvalErrorData, EvalResult, Value(..))
 import Value exposing (typeError)
+import XModel
 
 
 type alias EvalFunction =
@@ -48,7 +49,8 @@ functions evalFunction =
         , ( "ceiling", one float to int ceiling Core.Basics.ceiling )
         , ( "cos", one float to float cos Core.Basics.cos )
         , ( "e", constant float e )
-        , ( "fdiv", two float float to float (/) Core.Basics.fdiv )
+        --, ( "fdiv", two float float to float (/) Core.Basics.fdiv )
+        , ( "fdiv", twoNumbers (//) (/) Core.Basics.fdiv )
         , ( "floor", one float to int floor Core.Basics.floor )
         , ( "idiv", two int int to int (//) Core.Basics.idiv )
         , ( "isInfinite", one float to bool isInfinite Core.Basics.isInfinite )
@@ -691,13 +693,13 @@ partiallyApply moduleName args implementation =
                 implementation.expression
 
 
-twoNumbers :
+twoNumbersOld :
     (Int -> Int -> Int)
     -> (Float -> Float -> Float)
     -> FunctionImplementation
     -> ModuleName
     -> ( Int, List Value -> Eval Value )
-twoNumbers fInt fFloat implementation moduleName =
+twoNumbersOld fInt fFloat implementation moduleName =
     ( 2
     , \args _ env ->
         case args of
@@ -721,4 +723,62 @@ twoNumbers fInt fFloat implementation moduleName =
 
             _ ->
                 EvalResult.fail <| typeError env "Expected two numbers"
+    )
+
+twoNumbers :
+    (Int -> Int -> Int)
+    -> (Float -> Float -> Float)
+    -> FunctionImplementation
+    -> ModuleName
+    -> ( Int, List Value -> Eval Value )
+twoNumbers fInt fFloat implementation moduleName =
+    ( 2
+    , \args _ env ->
+        case args of
+            [ Int li, Int ri ] ->
+                EvalResult.succeed <| Int (fInt li ri)
+
+            [ Int li, Float rf ] ->
+                EvalResult.succeed <| Float (fFloat (toFloat li) rf)
+
+            [ Float lf, Int ri ] ->
+                EvalResult.succeed <| Float (fFloat lf (toFloat ri))
+
+            [ Float lf, Float rf ] ->
+                EvalResult.succeed <| Float (fFloat lf rf)
+            
+            [DataAr ar, Float fl] ->
+                let
+                    dAr = XModel.valueToDataArray (DataAr ar)
+                    calcData = Array.map (\x -> fFloat x fl) dAr.data
+                    calcDAr = { dAr | data = calcData }  
+
+                in
+                EvalResult.succeed <| (XModel.dataArrayWithDimsToValue calcDAr)
+
+            [Float fl, DataAr ar] ->
+                let
+                    dAr = XModel.valueToDataArray (DataAr ar)
+                    calcData = Array.map (\x -> fFloat fl x ) dAr.data
+                    calcDAr = { dAr | data = calcData }  
+                in
+                EvalResult.succeed <| (XModel.dataArrayWithDimsToValue calcDAr)
+                
+            [ DataAr la, DataAr ra ] ->
+                let
+                    leftDAr = XModel.valueToDataArray (DataAr la)
+                    rightDAr = XModel.valueToDataArray (DataAr ra)
+                    calcDAr = XModel.funcDataArrayPairAr leftDAr rightDAr fFloat
+                            |> Tuple.first |> Maybe.withDefault XModel.emptyDataArray
+                in
+                EvalResult.succeed <| (XModel.dataArrayWithDimsToValue calcDAr)
+
+            [ _ ] ->
+                partiallyApply moduleName args implementation
+
+            [] ->
+                partiallyApply moduleName args implementation
+
+            _ ->
+                EvalResult.fail <| typeError env ("Expected two numbers" ++ Debug.toString args)
     )
