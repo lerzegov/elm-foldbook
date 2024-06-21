@@ -7,8 +7,6 @@ import Array.Extra
 
 import List.Extra
 import XModel exposing (..)
-import XModel exposing (DimVariantRef(..))
-import XModel exposing (CoordSpecifier(..))
 import TypesXModel exposing (..)
 import Core.Basics exposing (le)
 import Types exposing (Value(..))
@@ -182,7 +180,7 @@ calcArForSingleCoordFromTwoArs xModel dimRef coordCalc input1Ar input2Ar binaryF
             Ok input1ArJust -> input1ArJust.datasetRef
             Err _ -> Nothing
         calcArWithDataset = { calcAr | datasetRef = datasetRef }
-        (_, calcDimsRaw) = XModel.dimInfo xModel calcArWithDataset-- calcArOk.localDims |> Maybe.withDefault Dict.empty
+        (_, calcDimsRaw) = XModel.dimInfoForDataArray xModel calcArWithDataset-- calcArOk.localDims |> Maybe.withDefault Dict.empty
         calcDims = case calcDimsRaw of
             Just calcDimsJust -> Dict.insert dimRef (Array.fromList [coordCalc]) calcDimsJust
             Nothing -> Dict.empty
@@ -208,7 +206,7 @@ calcArForSingleCoordFromOneAr xModel dimRef coordCalc input1Ar unaryFunc =
             Ok calcArJust -> calcArJust
             Err _ -> XModel.emptyDataArray
         calcArOkWithDataset = { calcArOk | datasetRef = datasetRef }
-        (_, calcDimsRaw) = XModel.dimInfo xModel calcArOkWithDataset-- calcArOk.localDims |> Maybe.withDefault Dict.empty
+        (_, calcDimsRaw) = XModel.dimInfoForDataArray xModel calcArOkWithDataset-- calcArOk.localDims |> Maybe.withDefault Dict.empty
         calcDims = case calcDimsRaw of
             Just calcDimsJust -> Dict.insert dimRef (Array.fromList [coordCalc]) calcDimsJust
             Nothing -> Dict.empty

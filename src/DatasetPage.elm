@@ -261,8 +261,10 @@ update msg prevEnv model =
         RequestHints word ->
             let
                 curXModel = getCurXModelFromEnv prevEnv
-                hints = getHints curXModel word
+                hints = getHints curXModel model.calcModel.datasetRef word
             in
+            -- Debug.log ("RequestHints" ++ Debug.toString hints)
+            -- triggered on all pages
             (model, prevEnv, sendHintsToJs hints)
 
         ReceiveHints hints ->
@@ -282,8 +284,13 @@ sendHintsToJs hints =
 getCurXModelFromEnv : Result Error Env -> XModel
 getCurXModelFromEnv env  = env |> CalcEngine.getXModelFromEnv |> Maybe.withDefault XModel.emptyXModel
 -- add coords like in expression parsing!!!
-getHints : XModel -> String -> List String
-getHints xModel word =
+
+getHints : XModel -> DatasetRef -> String -> List String
+getHints xModel datasetRef word =
+    XModel.promptCoordsForPartialRangeName xModel datasetRef word
+
+getHintsOld : XModel -> String -> List String
+getHintsOld xModel word =
     let
         parts = FormulaParser.parseHierarchicalName word
     in
@@ -301,7 +308,7 @@ getHints xModel word =
                 Nothing ->
                     []
 
-        Ok (datasetRef , dataArrayRef , dimRefs) ->
+        Ok (datasetRef, dataArrayRef, dimRefs) ->
             case Dict.get datasetRef xModel.datasets of
                 Just dataset ->
                     let
@@ -311,23 +318,23 @@ getHints xModel word =
                     case maybeDataArrayWithDims of
                         Just dataArray ->
                             let
-                                -- get last element of dimRefs
+                                remainingDims = List.drop (List.length dimRefs) (dataArray.localDimRefs |> Maybe.withDefault [])
+                                availableCoords = remainingDims 
+                                    |> List.concatMap (\dim -> 
+                                            List.map    (\coord -> dim ++ "." ++ coord) 
+                                                        (Dict.get dim xModel.dims  |> Maybe.withDefault Array.empty |> Array.toList)
+                                                      )
                                 dimRefLast = List.head (List.reverse dimRefs)
-                                dimRefPrev = (List.drop 1 (List.reverse dimRefs)) |> List.reverse
-                                -- if dimRefPrev
+                                dimRefPrev = List.drop 1 (List.reverse dimRefs) |> List.reverse
                                 dimRefPrevStr = 
                                     if dimRefPrev == [] then
                                         ""
                                     else
                                         "_" ++ (String.join "_" dimRefPrev)
                             in
-                            case (dataArray.localDimRefs, dimRefLast) of
-                                (Just localDimRefs, Just dimLast) ->
-                                    List.filter (String.startsWith dimLast) localDimRefs
-                                        |> List.map (\ref -> (FormulaParser.lowerFirst datasetRef) 
-                                            ++ "__" ++ dataArrayRef ++ dimRefPrevStr ++ "_" ++ ref)
-                                (_, _) ->
-                                    []
+                            List.filter (String.startsWith (Maybe.withDefault "" dimRefLast)) availableCoords
+                                |> List.map (\coord -> (FormulaParser.lowerFirst datasetRef) 
+                                    ++ "__" ++ dataArrayRef ++ dimRefPrevStr ++ "_" ++ coord)
                         Nothing ->
                             []
                 Nothing ->
@@ -335,6 +342,12 @@ getHints xModel word =
 
         _ ->
             []
+
+-- helper function to filter available coords for a dimRef
+filterAvailableCoords : List DimRef -> Dict DimRef (List Coord) -> List Coord
+filterAvailableCoords remainingDims dims =
+    remainingDims
+        |> List.concatMap (\dim -> List.map (\coord -> dim ++ "." ++ coord) (Dict.get dim dims |> Maybe.withDefault []))
 
 -- used in DnDTrayMsg subMsg, returns updated SpreadsheetUI.Model set to model.spreadsheetUIModel
 -- then continues with update cellsUI from spreadsheetUI

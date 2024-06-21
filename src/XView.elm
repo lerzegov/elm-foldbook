@@ -1,7 +1,7 @@
 module XView exposing (..)
 
 import TypesXModel exposing (..)
-import XModel exposing (DimVariantRef(..), CoordSpecifier(..),  Index, IndexSpecifier(..))
+import XModel
 import Array exposing (Array)
 import Array.Extra
 import Array2D exposing (Array2D)
@@ -30,9 +30,9 @@ defaultDatasetView xModel datasetRef name =
         myDataset = XModel.getDatasetByRef datasetRef xModel.datasets |> Maybe.withDefault XModel.emptyDataset
 
         (annoRefList, filteredDimRefs) = AppUtil.splitSelected myDataset.dimRefs "anno"
-        defaultDataArrayRef = TypesXModel.getDefaultDataArrayRef myDataset
+        defaultDataArrayRef = XModel.getDefaultDataArrayRef myDataset
         annoRef = List.map (\dimRef -> (CategDimRef dimRef, CoordNone)) annoRefList
-        hardCodedPageTray = [(DVarDimRef XModel.dVarIdentifier, SingleCoord "valore")]
+        hardCodedPageTray = [(DVarDimRef dVarIdentifier, SingleCoord "valore")]
         hardCodedRowTray = [(CategDimRef "voce", CoordNone), (CategDimRef "azienda", CoordNone)]
         hardCodedColTray = [(CategDimRef "anno", CoordNone)]
 
@@ -41,7 +41,7 @@ defaultDatasetView xModel datasetRef name =
     , datasetRef = datasetRef
     , pageTray = []
     , rowTray =  List.map (\dimRef -> (CategDimRef dimRef, CoordNone)) filteredDimRefs
-    , colTray = (DVarDimRef XModel.dVarIdentifier,  CoordNone ) --SingleCoord defaultDataArrayRef)
+    , colTray = (DVarDimRef dVarIdentifier,  CoordNone ) --SingleCoord defaultDataArrayRef)
                  :: annoRef
     --, colTray = hardCodedColTray -- annoRef ++ [(DVarDimRef XModel.dVarIdentifier, CoordNone)]
     , errMsg = ""
@@ -115,7 +115,7 @@ getSpreadsheetDataForView dims dataset datasetView =
     let  
         datasetDimNames = dataset.dimRefs
         datasetViewDimDVarNames = Tuple.first (List.unzip (pageTrayStrings ++ rowTrayStrings ++ colTrayStrings))
-        datasetViewDimNames  = List.filter (\d -> d /= XModel.dVarIdentifier ) datasetViewDimDVarNames
+        datasetViewDimNames  = List.filter (\d -> d /= dVarIdentifier ) datasetViewDimDVarNames
         -- metto view come original perché sono le dims della view a dover essere shuffled
         -- shufIdxs used to shuffle posVecs ordered as in view to get them in Dataset order
         shufIdxs = AppUtil.shuffledIndices datasetViewDimNames datasetDimNames
@@ -406,7 +406,7 @@ checkTraysContainAllDims dataset datasetView =
 
         -- Check if all dataset dims are covered
         allDimVariants : List DimVariantRef
-        allDimVariants = List.map CategDimRef dataset.dimRefs ++ [DVarDimRef XModel.dVarIdentifier]
+        allDimVariants = List.map CategDimRef dataset.dimRefs ++ [DVarDimRef dVarIdentifier]
         allDimsCovered = List.all (\dim -> List.member dim allDimVariants) trayDims
     in
     case (noDuplicates, allDimsCovered) of

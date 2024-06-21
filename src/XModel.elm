@@ -10,6 +10,8 @@ import Array.Extra
 import List.Extra
 import XParser exposing (XValue(..))
 import TypesXModel exposing (..)
+import FormulaParser
+import Core.Basics exposing (le)
 
 -- helper expressions and functions to check DataArray contenttype
 emptyDataArray : DataArray
@@ -71,38 +73,38 @@ getDatasetByRef : DatasetRef -> Datasets -> Maybe Dataset
 getDatasetByRef ref datasets =
     Dict.get ref datasets
 
+datasetExists : DatasetRef -> XModel -> Bool
+datasetExists ref xModel =
+    case Dict.get ref xModel.datasets of
+        Just _ -> True
+        Nothing -> False
+
 getDataArrayByRef : DataArrayRef -> DataArrays -> Maybe DataArray
 getDataArrayByRef ref dataArrays =
     Dict.get ref dataArrays
 
 getDataArrayWithDimsFromXModel : XModel -> DatasetRef -> DataArrayRef -> Maybe DataArray
 getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef =
-    case Dict.get datasetRef xModel.datasets of
-        Just dataset ->
-            case Dict.get dataArrayRef dataset.dataArrays of
-                Just dataArray -> 
-                    let 
-                        localDims = dataArray.localDims 
-                        localdimRefs = dataArray.localDimRefs
-                        (dimRefs, dims) = case (localdimRefs, localDims) of
-                            (Just localdimRefsJust, Just locDimsJust) -> (Just localdimRefsJust, Just locDimsJust)
-                            _ ->  dimInfo xModel dataArray
-                    in
-                    Just { dataArray | localDimRefs = dimRefs, localDims = dims }
-                Nothing -> Nothing
-        Nothing -> Nothing
+    Maybe.andThen (\dataset ->
+        Maybe.andThen (\dataArray ->
+            let 
+                localDims = dataArray.localDims 
+                localdimRefs = dataArray.localDimRefs
+                (dimRefs, dims) = case (localdimRefs, localDims) of
+                    (Just localdimRefsJust, Just locDimsJust) -> (Just localdimRefsJust, Just locDimsJust)
+                    _ ->  dimInfoForDataArray xModel dataArray
+            in
+            Just { dataArray | localDimRefs = dimRefs, localDims = dims }
+        ) (Dict.get dataArrayRef dataset.dataArrays)
+    ) (Dict.get datasetRef xModel.datasets)
 
 getParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> Maybe Value
 getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef =
-    case maybeXModel of
-        Just xModel ->
-            case getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef of
-                Just dataArray ->
-                    Just (dataArrayWithDimsToValue dataArray)
-                Nothing ->
-                    Nothing
-        Nothing ->
-            Nothing
+    Maybe.andThen (\xModel ->
+        Maybe.andThen (\dataArray ->
+            Just (dataArrayWithDimsToValue dataArray)
+        ) (getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef)
+    ) maybeXModel
 
 locParsedDataArray : Maybe XModel -> DatasetRef -> DataArrayRef -> List Coord -> Maybe DataArray
 locParsedDataArray maybeXModel datasetRef dataArrayRef coords =
@@ -478,17 +480,6 @@ valueToXModel value =
 nrDims : Dataset  -> Int
 nrDims dataset = List.length dataset.dimRefs
 
-type alias DVarRef = String
-
--- used in DatasetView to specify Trays
--- includes "categorical" DimRefs plus DVarDimRef to handle the DataArrays in the Dataset as coords
--- should not affect iloc and loc on Dataset
-type DimVariantRef
-    = CategDimRef DimRef
-    | DVarDimRef DVarRef -- container of DataArrayRefs used as pseudo-coords
--- hard coded name of the dVarDim
-dVarIdentifier : DVarRef
-dVarIdentifier = "dVar"
 
 dimVariantToDimRef : DimVariantRef -> DimRef
 dimVariantToDimRef dimVariantRef =
@@ -571,8 +562,8 @@ datasetForDataArray xModel dataArray =
         Nothing -> Nothing
 
 -- returns the full Dim info for the DimRefs in a DataArray, witouht filtering
-dimInfo : XModel -> DataArray -> (Maybe (List DimRef), Maybe Dims)
-dimInfo xModel dataArray =
+dimInfoForDataArray : XModel -> DataArray -> (Maybe (List DimRef), Maybe Dims)
+dimInfoForDataArray xModel dataArray =
     let
         dataset = datasetForDataArray xModel dataArray
     in
@@ -582,17 +573,17 @@ dimInfo xModel dataArray =
         (Nothing, Nothing, Just datasetJust) -> (Just datasetJust.dimRefs, dimsForDimRefs xModel datasetJust.dimRefs)
         _ -> (Just ["empty","dims"], Just Dict.empty) --(Nothing, Nothing)
 
--- custom types and basic helper functions for calcFlatIndex, iloc and loc
-type alias Index = Int
-type alias FlatIndex = Int
-type alias CoordIndex = Int
-type alias Range = (Int, Int)
-type alias Stride = Int
-type alias Size = Int
-type alias PosVec = List CoordIndex
-type alias CoordVec = List Coord
-type alias Dimension = (Stride, Int) -- (stride for the dimension, size of the dimension)
-type alias CoordDict = Dict Coord CoordIndex
+-- returns the full Dim info for the DimRefs in a DataArray, witouht filtering
+dimInfoForDatasetRef : XModel -> DatasetRef -> (Maybe (List DimRef), Maybe Dims)
+dimInfoForDatasetRef xModel datasetRef =
+    let
+        maybeDataset = getDatasetByRef datasetRef xModel.datasets
+    in
+    case maybeDataset of 
+        Just dataset -> (Just dataset.dimRefs, dimsForDimRefs xModel dataset.dimRefs)
+        Nothing -> (Just ["empty","dims"], Just Dict.empty) --(Nothing, Nothing)
+
+
 
 -- for a given DimVariant, returns the index in the flat array of the data
 -- for a given list of indices, i.e. positions of the coords in the respective DimVariant
@@ -727,12 +718,6 @@ itemCoordVecsForDims dims dimRefs =
     in
     Array.fromList posVecs
 
--- used to filter the list of coord indices to include in a DataArray view
-type IndexSpecifier
-    = SingleIndex CoordIndex -- single coord index
-    | IndexRange (CoordIndex, CoordIndex) -- contiguous range of coord indices
-    | IndexList (Array CoordIndex) -- sparse list of coord indices
-    | IndexNone -- no filter, all coord indices
 
 -- helper function to convert an IndexSpecifier to a list of filtered indices
 expandIndexSpecifier : Dims -> Dataset -> DimVariantRef -> IndexSpecifier -> Array CoordIndex
@@ -958,11 +943,6 @@ ilocAr dataArray dimRefIndicesTuples =
 
 
 -- HANDLING COORDS, ANALOGOUS TO INDICES
-type CoordSpecifier
-    = SingleCoord Coord
-    | CoordRange (Coord, Coord)
-    | CoordList (Array Coord)
-    | CoordNone
 
 strToCoordSpecifier : String -> CoordSpecifier
 strToCoordSpecifier str =
@@ -1911,7 +1891,7 @@ aggrDataArrayUnary xModel arSrc aggrFunc aggrDimRefs dataArrayRef =
     case arSrc of
         Ok arJust -> 
             let
-                (srcDimRefs , srcDims) = dimInfo xModel arJust
+                (srcDimRefs , srcDims) = dimInfoForDataArray xModel arJust
             in
             case (srcDims,  srcDimRefs) of
                 (Just srcDimsJust, Just srcDimRefsJust) ->
@@ -1974,8 +1954,8 @@ aggrDataArrayUnaryAr arSrc aggrFunc aggrDimRefs dataArrayRef =
 funcDataArrayPair : XModel -> DataArray -> DataArray  -> BinaryFuncFloat -> (Maybe DataArray, Maybe DimRef)
 funcDataArrayPair xModel arSrc arDest binaryFunc = 
     let
-        (srcDimRefs , srcDims) = dimInfo xModel arSrc
-        (destDimRefs , destDims) = dimInfo xModel arDest
+        (srcDimRefs , srcDims) = dimInfoForDataArray xModel arSrc
+        (destDimRefs , destDims) = dimInfoForDataArray xModel arDest
     in
     case (srcDims,  destDims) of
         -- extend checks to localDimRefs 
@@ -2064,8 +2044,8 @@ updateDataArrayPair xModel arWhole arPart binaryFunc =
     case (arWhole, arPart) of
         (Ok arWholeOk, Ok arPartOk) ->
                 let
-                    (wholeDimRefs , wholeDims) = dimInfo xModel arWholeOk
-                    (partDimRefs , partDims) = dimInfo xModel arPartOk
+                    (wholeDimRefs , wholeDims) = dimInfoForDataArray xModel arWholeOk
+                    (partDimRefs , partDims) = dimInfoForDataArray xModel arPartOk
                 in
             case (wholeDims,  partDims) of
                 -- extend checks to localDimRefs 
@@ -2110,6 +2090,276 @@ updateDataArrayPair xModel arWhole arPart binaryFunc =
                 Err "Error in updateDataArrayPair >= WRONG (Ok arWholeOk, Ok arPartOk)"
 
 
+
+-- ============== RANGE FUNCTIONS ==================
+getDefaultDataArrayRef : Dataset -> DataArrayRef
+getDefaultDataArrayRef dataset = 
+    case dataset.defaultDataArrayRef of
+        Just ref -> ref
+        Nothing -> -- if no default, return the first one
+            case dataset.dataArrayRefs of
+                [] -> ""
+                ref :: _ -> ref
+-- used to check duplicated coord names in a Dims specification
+type alias CoordSearchDict = Dict Coord (List DimRef)
+
+makeCoordSearchDict : XModel -> DatasetRef -> List DimRef-> CoordSearchDict
+makeCoordSearchDict xModel datasetRef filteredDimRefs = 
+    let
+        dataset = getDatasetByRef datasetRef xModel.datasets
+            |> Maybe.withDefault emptyDataset
+        dims = 
+            if filteredDimRefs == [] then
+                dimsForDataset xModel.dims dataset
+            else
+                Dict.filter (\key _ -> List.member key filteredDimRefs) (dimsForDataset xModel.dims dataset)
+        dVarDict = List.foldl -- insert dVars and dVarIdentifier
+                    (\dVarRef dVarAcc -> 
+                        Dict.insert dVarRef [dVarIdentifier] dVarAcc
+                    ) Dict.empty dataset.dataArrayRefs
+    in   
+    Dict.foldl -- add coords and list of dimRefs
+        (\dimRef coordArray outerAcc -> 
+            Array.foldl 
+                (\coord innerAcc -> 
+                    case Dict.get coord innerAcc of
+                        Just dimRefs -> 
+                            Dict.insert coord (dimRef :: dimRefs) innerAcc
+                        Nothing -> 
+                            Dict.insert coord [dimRef] innerAcc
+                ) outerAcc coordArray
+        ) dVarDict dims
+-- NB check of duplication is relevant only for the same dataset, not for the whole model
+-- so be careful not to pass the whole dims of the model, better the calculated localDims of a DataArray
+rangeDefToName : XModel -> DatasetRef -> RangeDef -> String
+rangeDefToName xModel curDatasetRef rangeDef = 
+    let
+        curDataset = getDatasetByRef curDatasetRef xModel.datasets |> Maybe.withDefault emptyDataset
+        dims = dimsForDataset xModel.dims curDataset
+        searchDict = makeCoordSearchDict xModel curDatasetRef []
+
+        getUniqueCoordDef : DimRef -> Coord -> Maybe String
+        getUniqueCoordDef dimRef coord = 
+            case Dict.get coord searchDict of
+                Just dimRefs -> 
+                    case dimRefs of
+                        [oneDimRef] -> Just coord
+                        [] -> Nothing -- coord present without matching dim
+                        _ -> Just (dimRef ++ "DOT" ++ coord)
+                Nothing -> Nothing -- coord not present in searchDict
+
+        coordSpecs : List (DimRef, CoordSpecifier) -> String
+        coordSpecs dimCoords = List.foldl 
+            (\(dimRef, coordSpec) accStr -> 
+                case coordSpecToString coordSpec of 
+                    Just coordSpecJust -> 
+                        case getUniqueCoordDef dimRef coordSpecJust of
+                            Just uniqueCoord -> accStr ++ "_" ++ uniqueCoord
+                            Nothing -> accStr ++ "_ERR" ++ dimRef
+                    Nothing -> accStr
+            ) "" dimCoords
+        defArrayRef = getDefaultDataArrayRef curDataset
+    in
+
+    case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
+        (Nothing, Nothing, Nothing) -> 
+            "undef__undef"
+        (Just ds, Nothing, Nothing) -> 
+            FormulaParser.lowerFirst ds 
+        (Nothing, Just da, Nothing) -> 
+            (FormulaParser.lowerFirst curDatasetRef) ++ "__" ++ da
+        (Just ds, Just da, Nothing) -> 
+            (FormulaParser.lowerFirst ds) ++ "__" ++ da
+        (Nothing, Nothing, Just dc) ->
+            (FormulaParser.lowerFirst curDatasetRef) ++ "__" ++ defArrayRef ++ (coordSpecs dc)
+        (Just ds, Nothing, Just dc) -> 
+            (FormulaParser.lowerFirst ds) ++ "__" ++ defArrayRef ++ (coordSpecs dc)
+        (Nothing, Just da, Just dc) -> 
+            (FormulaParser.lowerFirst curDatasetRef) ++ "__" ++ da ++ (coordSpecs dc)
+        (Just ds, Just da, Just dc) -> 
+            (FormulaParser.lowerFirst ds) ++ "__" ++ da ++ (coordSpecs dc)
+
+
+rangeNameToDef : XModel -> DatasetRef -> String -> Result String RangeDef
+rangeNameToDef xModel curDatasetRef rangeName = 
+    let
+        curDataset = case getDatasetByRef curDatasetRef xModel.datasets of
+            Just datasetJust -> datasetJust
+            Nothing -> emptyDataset
+        defArrayRef = getDefaultDataArrayRef curDataset
+        searchDict = makeCoordSearchDict xModel curDatasetRef []
+
+        trySplitDataset = String.split "__" rangeName
+        firstTokenOrEmpty = List.head trySplitDataset |> Maybe.withDefault ""
+        splitRest lst = -- list of strings separated by "_" in the head of lst
+            case List.head lst of
+                Just head -> String.split "_" head
+                Nothing -> []
+        isOnlyDatasetNotCoord = 
+            List.length trySplitDataset == 1 -- only one segment
+            && List.length (splitRest trySplitDataset) == 1 -- no tokens after or in absence of "__ "
+                && firstTokenOrEmpty /= "" -- there is a token before or in absence of "__" 
+                && Dict.get firstTokenOrEmpty searchDict == Nothing -- that token is not a coord or dVar
+        inputDs : Result String String
+        inputDs = 
+                if List.length trySplitDataset > 1 || isOnlyDatasetNotCoord then 
+                    let 
+                        maybeDs =
+                            firstTokenOrEmpty |> FormulaParser.capitalizeFirst
+                    in
+                    if maybeDs /= "" then
+                        if not (datasetExists maybeDs xModel) then 
+                            Err ("Undefined dataset: " ++ maybeDs)
+                        else 
+                            Ok maybeDs
+                    else 
+                      Ok ""  -- no input dataset
+                else
+                    Ok ""  -- no input dataset
+        ( ds, rest, errMsgDs) = 
+            case inputDs of
+                Ok "" -> 
+                    (curDatasetRef
+                    , trySplitDataset |> splitRest
+                    , ""
+                    )
+                Ok inputDsStr ->
+                    ( inputDsStr
+                    , trySplitDataset |> List.drop 1 |> splitRest
+                    , ""
+                    )
+                Err errMsgStr -> 
+                    ("", [], errMsgStr)
+        (inputDa, coordSpecsInName, errMsg) = -- scans the rest of the split for coords and dVar
+            List.foldl (\token (daAcc, coordAcc, errAcc) -> 
+                let
+                    maybeCTuple  = getCoordSpec token
+                in
+                case maybeCTuple of
+                    Just (dimRef, SingleCoord coord) -> 
+                        if dimRef == dVarIdentifier then
+                            (coord, coordAcc, errAcc) -- dVar found signaled by CoordNone
+                        else
+                            (daAcc, coordAcc ++ [(dimRef, SingleCoord coord)], errAcc) -- dimRef and coord found
+
+                    _ -> (daAcc
+                         , coordAcc
+                         , errAcc ++ "token " ++ token ++ " undefined" -- ++ "=>" ++ (Debug.toString firstTokenOrEmpty) ++ " " ++ (Debug.toString isOnlyDatasetNotCoord)
+                         ) -- not a coord or dVar
+            ) ("", [], errMsgDs) rest
+        da = 
+            if inputDa == "" then
+                defArrayRef
+            else
+                inputDa
+
+        getCoordSpec : String -> Maybe (DimRef, CoordSpecifier)
+        getCoordSpec coordSpec = 
+            let
+                splitCoordSpec = String.split "DOT" coordSpec
+            in
+            case splitCoordSpec of
+                [coord] -> -- only coord passed in the name is checked against dims
+                    case Dict.get coord searchDict of
+                        Just dimRefs ->
+                            case dimRefs of
+                                [dimRef] -> 
+                                    Just (dimRef, SingleCoord coord) -- only one dimRef, ok
+                                _ -> Nothing -- more than one dimRef, error ambiguous definition
+                        Nothing -> Nothing -- error, coord not found in dims
+                [dimRef, coord] -> -- dimRef and coord passed in the name are checked against dims
+                    case Dict.get coord searchDict of
+                        Nothing-> Nothing
+                        Just foundDimRefsForCoord ->
+                            if List.member dimRef foundDimRefsForCoord  then
+                                Just (dimRef, SingleCoord coord)
+                            else
+                                Nothing
+                _ -> Nothing
+
+        -- filter out the coords that are not found in dims and result in Nothing
+
+    in
+    if errMsg /= "" then
+        Err errMsg
+    else
+        case (ds, da, coordSpecsInName) of
+            ("", _, _) -> Err "Dataset not found"
+            (_, "", _) -> Err "DataArray not found"
+            -- ( _, _, []) ->
+            --     Ok { datasetRef = Just ds, dataArrayRef = Just da, dimCoords = Just [] }
+            (_, _, _) ->
+                Ok { datasetRef = Just ds, dataArrayRef = Just da, dimCoords = Just coordSpecsInName }
+
+-- used in codemirror to parse the range name being entered and propose the next possible tokens
+promptCoordsForPartialRangeName : XModel -> DatasetRef -> String -> List String
+promptCoordsForPartialRangeName xModel curDatasetRef partialName = 
+    let
+
+        curDataset = case getDatasetByRef curDatasetRef xModel.datasets  of
+            Just datasetJust -> datasetJust
+            Nothing -> emptyDataset
+        dims = dimsForDataset xModel.dims curDataset
+
+        lastToken = String.split "_" partialName |> List.reverse |> List.head |> Maybe.withDefault ""
+        
+        prependedRangeName = 
+            case String.split "_" partialName of
+                [] -> partialName
+                _ -> (String.split "_" partialName) |> List.reverse |> List.drop 1 |> List.reverse |> String.join "_"
+        
+        partialRangeDef = rangeNameToDef xModel curDatasetRef prependedRangeName
+        
+        dimRefsInPartialName = 
+            case partialRangeDef of
+                Ok rangeDef  -> case rangeDef.dimCoords of
+                    Just dimCoords -> List.map Tuple.first dimCoords
+                    Nothing -> []
+                Err _ -> []
+        leftDimRefs = List.filter (\dimRef -> not (List.member dimRef dimRefsInPartialName)) (Dict.keys dims)
+        searchDict  = makeCoordSearchDict xModel curDatasetRef leftDimRefs
+        
+        -- filter for lastToken and fold available coords, if lastToken="*" fold all
+        availableCoords : CoordSearchDict -> String -> List String
+        availableCoords searchDictArg lastTokenArg =
+            let
+                -- Flatten the dict into a list of (compositeKey, originalCoord)
+                flattenedList =
+                    Dict.foldl
+                        (\coord dimRefs acc ->
+                            let
+                                compositeKeys = -- makes a list of (compositeKey => to sort on, originalCoord)
+                                    if String.startsWith lastTokenArg coord || lastTokenArg == "*" then
+                                        List.map (\dimRef -> 
+                                            if List.length dimRefs > 1 then 
+                                                (dimRef ++ "." ++ coord, dimRef ++ "DOT" ++ coord) 
+                                            else 
+                                                (dimRef ++ "." ++ coord, coord)
+                                            ) dimRefs
+                                    else
+                                        []
+                            in
+                            compositeKeys ++ acc
+                        )
+                        []
+                        searchDictArg
+
+                -- Sort the list by composite keys
+                sortedCompositeKeys =
+                    flattenedList
+                        |> List.sortWith (\(a, _) (b, _) -> compare a b)
+
+                -- Extract the original coords from the sorted list
+                sortedCoords =
+                    List.map Tuple.second sortedCompositeKeys
+            in
+            sortedCoords
+        prompts = List.map (\r -> prependedRangeName ++ "_" ++ r) (availableCoords searchDict lastToken)
+    in
+    prompts
+
+
+
 -- ============== TEST DATA ==================
 -- tried to move to separate module but imported types not recognized there
 
@@ -2126,6 +2376,12 @@ voce = "voce"
 scenario : DimRef
 scenario = "scenario"
 
+grChar : DimRef
+grChar = "grChar"
+
+cigar : DimRef
+cigar = "cigar"
+
 aziendaCoords : Array Coord
 -- deCapitalized to make coord names usable as variables, problem with numbers
 aziendaCoords = Array.fromList ["alfa", "beta"]
@@ -2137,6 +2393,11 @@ scenarioCoords : Array Coord
 scenarioCoords = Array.fromList ["base", "worst", "best", "forecast"]
 
 
+caratteriGreciCoords : Array Coord
+caratteriGreciCoords = Array.fromList [ "alfa", "beta", "gamma", "delta"]
+
+cigarCoords : Array Coord
+cigarCoords = Array.fromList ["alfa", "nazionali"]
 
 myDims : Dims
 myDims = Dict.fromList
@@ -2144,6 +2405,8 @@ myDims = Dict.fromList
     , (anno, annoCoords)
     , (voce, voceCoords)
     , (scenario, scenarioCoords)
+    , (grChar, caratteriGreciCoords)
+    , (cigar, cigarCoords)
     ]
 
 
@@ -2153,7 +2416,7 @@ ce : DatasetRef
 ce = "Ce" -- used as module name for formulas must be capitalized
 
 valore : DataArrayRef
-valore = "valore"
+valore = "valore" -- used as default dataArrayRef
 
 note : DataArrayRef
 note = "note"
@@ -2346,8 +2609,20 @@ macroDataArrays = Dict.fromList
                     , localDimRefs = Nothing
                     })
     ]
+-- === Greche dataset to test duplicate coord names ===
 
-myDatasets : Datasets
+greche : DatasetRef
+greche = "Greche"
+
+greekDAr : DataArrayRef
+greekDAr = "caratteriGreci"
+
+caratteriGreciArrayText : Array String
+caratteriGreciArrayText = Array.fromList [ "α", "β", "γ", "δ", "ε", "ζ", "η", "θ"]
+
+caratteriGreciArrayFloat : Array Float
+caratteriGreciArrayFloat = Array.fromList [ 0, 1, 2, 3, 4, 5, 6, 7]
+
 myDatasets = Dict.fromList
     [ (ce, { ref = ce
              -- order changed, now seems ok
@@ -2369,6 +2644,21 @@ myDatasets = Dict.fromList
                 , dataArrayRefs = [inflazione, cambioUsdEur, cambioCalc]
                 , dataArrays = macroDataArrays
                 , formulas = macroFormulas
+                , defaultDataArrayRef = Nothing
+                })
+    , (greche,   { ref = greche
+                , dimRefs = [grChar, cigar] -- ordered list of dims
+                , dataArrayRefs = [greekDAr]
+                , dataArrays = Dict.fromList
+                    [ (greekDAr, { ref = greekDAr
+                        , datasetRef = Just greche
+                        , data = caratteriGreciArrayFloat
+                        , text = caratteriGreciArrayText
+                        , localDims = Nothing
+                        , localDimRefs = Nothing
+                        })
+                    ]
+                , formulas = ""
                 , defaultDataArrayRef = Nothing
                 })
     ]

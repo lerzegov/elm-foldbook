@@ -100,7 +100,7 @@ initialModel env datasetRef =
         checkLhsExpressions = getLhsExpressions initEnv datasetRef
         checkDataArray = getExprDataArray (getXModelFromEnv initEnv) "ce__valore_ricavi"
         initOutput = case initEnv of
-            Ok okEnv -> Ok ("Initial model, Ok")
+            Ok okEnv -> Ok ("Initial model, Ok, for dataset " ++ datasetRef)
             Err error -> Err (Types.errorToString error)
     in
     { datasetRef = datasetRef
@@ -127,9 +127,12 @@ reinit model prevEnv input =
             initSource = input
             initParsed = Nothing -- tryParse initSource -- disabled not relevant
             initEnv = Module.makeEnv initSource curEnv
-            initOutput = case initEnv of
-                Ok env -> Ok ("Reinit model, parsed = " ++ Debug.toString initParsed)
-                Err error -> Err (Types.errorToString error)
+            (initOutput, initDatasetRef)  = case initEnv of
+                Ok env -> (Ok ("Reinit model, parsed = " ++ Debug.toString initParsed)
+                                , env.currentModule |> List.head |> Maybe.withDefault ""
+                                )
+                Err error -> (Err (Types.errorToString error), "")
+            
         in
     -- input is the code to be executed, converted to a default module with a main function
     -- or itself as a module if it starts with "module" wich may contain
@@ -137,7 +140,7 @@ reinit model prevEnv input =
     -- see examples in strings passed to init
     -- in my refactoring module must be defined in the input, toModule does not work
        -- Debug.log ("reinit input: ")
-       ( { datasetRef = "ce"
+       ( { datasetRef = initDatasetRef
         , input = initSource 
         -- gets the expression of the main function, 
         -- only to pass to viewParsed and display it in the "Parsed as" box
@@ -154,7 +157,7 @@ reinit model prevEnv input =
         , initEnv
         , Cmd.none )
     else -- code is not executable
-        ({ datasetRef = "ce"
+        ({ datasetRef = ""
         , input = input 
         -- gets the expression of the main function, 
         -- only to pass to viewParsed and display it in the "Parsed as" box
