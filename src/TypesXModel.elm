@@ -89,6 +89,7 @@ type alias RangeDef =
     { datasetRef : Maybe String
     , dataArrayRef : Maybe String
     , dimCoords : Maybe (List (DimRef, CoordSpecifier)) -- no DimVariantRef used in loc, check
+    , isExplicitDataArrayRef : Bool 
     }
 
 

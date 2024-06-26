@@ -44,7 +44,7 @@ import List exposing (partition)
 import FormulaParser
 import FastDict as Dict
 import Task
-import AppUtil exposing (cmdMsg)
+import AppUtil exposing (cmdMsg, myLog)
 
 
 
@@ -97,12 +97,11 @@ initialModel env datasetRef =
             Nothing -> ""
         initParsed = Nothing -- tryParse initSource -- disabled by Luca not relevant
         initEnv = env
-        checkLhsExpressions = getLhsExpressions initEnv datasetRef
-        checkDataArray = getExprDataArray (getXModelFromEnv initEnv) "ce__valore_ricavi"
         initOutput = case initEnv of
-            Ok okEnv -> Ok ("Initial model, Ok, for dataset " ++ datasetRef)
+            Ok okEnv -> Ok ("Initial model, Ok, for dataset " ++ datasetRef )
             Err error -> Err (Types.errorToString error)
     in
+    Debug.log ("initialModel for dataset: " ++ datasetRef ) <|
     { datasetRef = datasetRef
     , input = initSource -- initial code in the console
     , parsed = initParsed -- disabled by Luca
@@ -118,6 +117,7 @@ initialModel env datasetRef =
 -- so I lose the computed values in previous evaluations
 reinit : Model -> Result Error Env -> String -> (Model, Result Error Env, Cmd Msg)
 reinit model prevEnv input =
+    Debug.log ("reinit model: " ++ Debug.toString input) <|
     if String.endsWith "\n\n" input then
         let
             curEnv : Maybe Env
@@ -313,7 +313,7 @@ update msg model prevEnv =
                     let
                         nextMsg = EvalFormula firstExpression restExpressions
                     in
-                    (modelWithExpressions, prevEnv, Cmd.batch [Cmd.none, Task.perform (\_ -> nextMsg) (Task.succeed ())])
+                    (modelWithExpressions, prevEnv, Cmd.batch [Cmd.none, cmdMsg  nextMsg])
                 [] ->
                     (model, prevEnv, Cmd.none)
 
@@ -326,7 +326,6 @@ update msg model prevEnv =
                 nextCmd =
                     case remainingExpressions of
                         nextExpression :: rest ->
-                            --Task.perform (\_ -> EvalFormula nextExpression rest) (Task.succeed ())
                             cmdMsg (EvalFormula nextExpression rest)
                         [] ->
                             Cmd.none
@@ -335,6 +334,7 @@ update msg model prevEnv =
                 -- curXModel2 = { curXModel | datasetToRecalc  = Nothing }
                 -- newEnv = setXModelToEnv prevEnv curXModel2 
             in
+            -- Debug.log ("EvalFormula: " ++ newLog)
             ( { newModel | pendingExpressions = remainingExpressions, log = newLog}
             , newEnv
             , Cmd.batch [Cmd.none, nextCmd] ) -- Cmd.none added as in EvalFormulas seems not to be needed
@@ -413,22 +413,49 @@ getEnvFunctions envModelField datasetRef =
                     funcList
                 Err _ -> Nothing
 
+handleResult : Result String RangeDef -> String
+handleResult result =
+    case result of
+        Ok rangeDef ->
+            case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
+                (Just dataset, Just dataArray, Just []) ->
+                    "Both datasetRef and dataArrayRef are present, but dimCoords is an empty list."
 
-getExprDataArray : Maybe XModel -> String -> Result String DataArray
-getExprDataArray maybeXModel expression = 
+                (Just dataset, Just dataArray, Just coords) ->
+                    if List.length coords > 0 then
+                        "Both datasetRef and dataArrayRef are present, and dimCoords is a non-empty list."
+                    else
+                        "Both datasetRef and dataArrayRef are present, but dimCoords is an empty list."
+                
+                _ ->
+                    "Other case."
+
+        Err errMsg ->
+            "Error: " ++ errMsg
+getExprDataArray : Maybe XModel -> DatasetRef -> String -> Result String DataArray
+getExprDataArray maybeXModel curDatasetRef expression = 
     case maybeXModel of
         Nothing -> Err "No XModel in getExprDataArray"
         Just xModel ->
-            case FormulaParser.parseHierarchicalName expression of
-                Ok (datasetRef, dataArrayRef, []) ->
-                    case XModel.getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef of
-                        Just parsedArray -> Ok parsedArray
-                        Nothing -> "DataArray not found in getExprDataArray"  |> Err
-                Ok (datasetRef, dataArrayRef, coordNames) ->
-                    case XModel.locParsedDataArray maybeXModel datasetRef dataArrayRef coordNames of
-                        Just parsedArray -> Ok parsedArray
-                        _ -> Err "loc on DataArray failed in getExprDataArray"
-                Err err -> Err ("Other error in getExprDataArray for parsing expression: " ++ expression)
+            let
+                retRangeDef = XModel.rangeNameToDef xModel curDatasetRef expression
+            in
+            case retRangeDef of
+                    Ok rangeDef ->
+                        case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
+                            (Just datasetRef, Just dataArrayRef, Just []) ->
+                                case XModel.getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef of
+                                    Just parsedArray -> Ok parsedArray
+                                    Nothing -> "DataArray not found in getExprDataArray"  |> Err
+                            (Just datasetRef, Just dataArrayRef, Just dimCoordTuples) ->
+                                     case XModel.locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples of
+                                        Just parsedArray -> Ok parsedArray
+                                        _ -> Err "loc on DataArray failed in getExprDataArray"
+                            (_, _, _) ->
+                                Err "other error in getExprDataArray from rangeNameToDef"
+                    Err errMsg ->
+                        Err ("Error in getExprDataArray from rangeNameToDef: " ++ errMsg)
+
 
 -- to solve no recalc added envWithCoreFunctions to main.Init 
 -- and added moduleFromDataset to calcExpressionToXModel in Module.evalModuleWithEnv
@@ -436,8 +463,10 @@ calcExpressionToXModel : String -> String -> Model -> Result Error Env -> (Model
 calcExpressionToXModel moduleSource expression curModel prevEnv =
     let
         curXModel = getXModelFromEnv prevEnv |> Maybe.withDefault XModel.emptyXModel
-        exprDataArray = getExprDataArray (Just curXModel) expression
-        moduleFromDataset = curModel.datasetRef
+
+        curDatasetRef = curModel.datasetRef
+        exprDataArray = getExprDataArray (Just curXModel) curDatasetRef expression
+        moduleFromDataset = curDatasetRef
 
         retModelEnv  = case exprDataArray of
             Ok dataArray ->
@@ -511,10 +540,10 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
                                 ({ updatedModelWithTrace | log = curModel.log ++ "\nErr case of Result  => " ++ (Types.errorToString error)  ++ "\n" }
                                 , prevEnv)
                 in
-                -- Debug.log ("calcExpressionToXModel Ok dataArray: " ++ Debug.toString curModel.log)
+                
                 updatedModelEnv
             Err err ->
-                ({ curModel | output = Err err }, prevEnv)
+                ({ curModel | output = Err (err ++ ", or no RangeName") }, prevEnv)
     in
     retModelEnv
 

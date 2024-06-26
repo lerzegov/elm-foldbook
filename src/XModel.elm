@@ -12,6 +12,9 @@ import XParser exposing (XValue(..))
 import TypesXModel exposing (..)
 import FormulaParser
 import Core.Basics exposing (le)
+import AppUtil
+import Html exposing (i)
+import FastDict exposing (keys)
 
 -- helper expressions and functions to check DataArray contenttype
 emptyDataArray : DataArray
@@ -130,15 +133,41 @@ locParsedDataArray maybeXModel datasetRef dataArrayRef coords =
                     Nothing
         Nothing ->
             Nothing
+locDataArrayfromRangeDef : Maybe XModel -> DatasetRef -> DataArrayRef -> List (DimRef, CoordSpecifier) -> Maybe DataArray
+locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples =
+    case maybeXModel of
+        Just xModel ->
+            let
+                arrayWithDims = getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef
+            in
+            if List.isEmpty dimCoordTuples then
+                arrayWithDims
+            else
+            case  arrayWithDims of
+                Just dataArray ->
+                    let
+                        locArray = locAr dataArray dimCoordTuples
+                    in
+                    case locArray of
+                        Just locArrayJust -> 
+                            Just locArrayJust
+                        Nothing -> Nothing
+                Nothing ->
+                    Nothing
+        Nothing ->
+            Nothing
 
 
 locParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List Coord -> Maybe Value
 locParsedDataArrayToValue maybeXModel datasetRef dataArrayRef coords =
-    case locParsedDataArray maybeXModel datasetRef dataArrayRef coords of
-        Just locArray ->
-            Just (dataArrayWithDimsToValue locArray)
-        Nothing ->
-            Nothing
+    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray)) 
+        (locParsedDataArray maybeXModel datasetRef dataArrayRef coords)
+
+
+locDataArrayfromRangeDefToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List (DimRef, CoordSpecifier)  -> Maybe Value
+locDataArrayfromRangeDefToValue maybeXModel datasetRef dataArrayRef dimCoordTuples =
+    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray)) 
+        (locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples)
 
 
 
@@ -2103,17 +2132,21 @@ getDefaultDataArrayRef dataset =
 -- used to check duplicated coord names in a Dims specification
 type alias CoordSearchDict = Dict Coord (List DimRef)
 
-makeCoordSearchDict : XModel -> DatasetRef -> List DimRef-> CoordSearchDict
-makeCoordSearchDict xModel datasetRef filteredDimRefs = 
+makeCoordSearchDict : XModel -> DatasetRef -> List DimRef-> Bool -> CoordSearchDict
+makeCoordSearchDict xModel datasetRef excludedDimRefs excludeDVars = 
     let
         dataset = getDatasetByRef datasetRef xModel.datasets
             |> Maybe.withDefault emptyDataset
         dims = 
-            if filteredDimRefs == [] then
+            if excludedDimRefs == [] then
                 dimsForDataset xModel.dims dataset
             else
-                Dict.filter (\key _ -> List.member key filteredDimRefs) (dimsForDataset xModel.dims dataset)
-        dVarDict = List.foldl -- insert dVars and dVarIdentifier
+                Dict.filter (\key _ -> not (List.member key excludedDimRefs)) (dimsForDataset xModel.dims dataset)
+        dVarDict = 
+            if excludeDVars then
+                Dict.empty
+            else
+                List.foldl -- insert dVars and dVarIdentifier
                     (\dVarRef dVarAcc -> 
                         Dict.insert dVarRef [dVarIdentifier] dVarAcc
                     ) Dict.empty dataset.dataArrayRefs
@@ -2136,7 +2169,7 @@ rangeDefToName xModel curDatasetRef rangeDef =
     let
         curDataset = getDatasetByRef curDatasetRef xModel.datasets |> Maybe.withDefault emptyDataset
         dims = dimsForDataset xModel.dims curDataset
-        searchDict = makeCoordSearchDict xModel curDatasetRef []
+        searchDict = makeCoordSearchDict xModel curDatasetRef [] False
 
         getUniqueCoordDef : DimRef -> Coord -> Maybe String
         getUniqueCoordDef dimRef coord = 
@@ -2179,27 +2212,22 @@ rangeDefToName xModel curDatasetRef rangeDef =
         (Just ds, Just da, Just dc) -> 
             (FormulaParser.lowerFirst ds) ++ "__" ++ da ++ (coordSpecs dc)
 
-
+-- generalize treatment of trailing "_" to use both for prompts and for parsing in calculation
 rangeNameToDef : XModel -> DatasetRef -> String -> Result String RangeDef
-rangeNameToDef xModel curDatasetRef rangeName = 
+rangeNameToDef xModel curDatasetRef rangeName = -- rangeName without trailing "_"
     let
-        curDataset = case getDatasetByRef curDatasetRef xModel.datasets of
-            Just datasetJust -> datasetJust
-            Nothing -> emptyDataset
-        defArrayRef = getDefaultDataArrayRef curDataset
-        searchDict = makeCoordSearchDict xModel curDatasetRef []
-
         trySplitDataset = String.split "__" rangeName
         firstTokenOrEmpty = List.head trySplitDataset |> Maybe.withDefault ""
         splitRest lst = -- list of strings separated by "_" in the head of lst
             case List.head lst of
                 Just head -> String.split "_" head
                 Nothing -> []
+        searchDictDs = makeCoordSearchDict xModel curDatasetRef [] False
         isOnlyDatasetNotCoord = 
             List.length trySplitDataset == 1 -- only one segment
             && List.length (splitRest trySplitDataset) == 1 -- no tokens after or in absence of "__ "
                 && firstTokenOrEmpty /= "" -- there is a token before or in absence of "__" 
-                && Dict.get firstTokenOrEmpty searchDict == Nothing -- that token is not a coord or dVar
+                && Dict.get firstTokenOrEmpty searchDictDs == Nothing -- that token is not a coord or dVar
         inputDs : Result String String
         inputDs = 
                 if List.length trySplitDataset > 1 || isOnlyDatasetNotCoord then 
@@ -2230,6 +2258,14 @@ rangeNameToDef xModel curDatasetRef rangeName =
                     )
                 Err errMsgStr -> 
                     ("", [], errMsgStr)
+        -- makes a dict of coords for the dataset in the range or passed as arg
+        curDataset = case getDatasetByRef ds xModel.datasets of
+            Just datasetJust -> datasetJust
+            Nothing -> emptyDataset
+        defArrayRef = getDefaultDataArrayRef curDataset
+
+        searchDict = makeCoordSearchDict xModel ds [] False
+
         (inputDa, coordSpecsInName, errMsg) = -- scans the rest of the split for coords and dVar
             List.foldl (\token (daAcc, coordAcc, errAcc) -> 
                 let
@@ -2238,20 +2274,21 @@ rangeNameToDef xModel curDatasetRef rangeName =
                 case maybeCTuple of
                     Just (dimRef, SingleCoord coord) -> 
                         if dimRef == dVarIdentifier then
-                            (coord, coordAcc, errAcc) -- dVar found signaled by CoordNone
+                            (coord, coordAcc, errAcc) -- dVar found signaled by dVarIdentifier
                         else
                             (daAcc, coordAcc ++ [(dimRef, SingleCoord coord)], errAcc) -- dimRef and coord found
 
                     _ -> (daAcc
                          , coordAcc
-                         , errAcc ++ "token " ++ token ++ " undefined" -- ++ "=>" ++ (Debug.toString firstTokenOrEmpty) ++ " " ++ (Debug.toString isOnlyDatasetNotCoord)
+                         , errAcc ++ "token " ++ token ++ " undefined" 
                          ) -- not a coord or dVar
             ) ("", [], errMsgDs) rest
-        da = 
+        
+        (da , isExplDaRef) = 
             if inputDa == "" then
-                defArrayRef
+                (defArrayRef, False)
             else
-                inputDa
+                (inputDa, True)
 
         getCoordSpec : String -> Maybe (DimRef, CoordSpecifier)
         getCoordSpec coordSpec = 
@@ -2277,47 +2314,64 @@ rangeNameToDef xModel curDatasetRef rangeName =
                                 Nothing
                 _ -> Nothing
 
-        -- filter out the coords that are not found in dims and result in Nothing
-
     in
     if errMsg /= "" then
         Err errMsg
+    else if ds == "" then
+        Err "Dataset not found" 
+    else if da == "" then
+        Err "DataArray not found"
     else
-        case (ds, da, coordSpecsInName) of
-            ("", _, _) -> Err "Dataset not found"
-            (_, "", _) -> Err "DataArray not found"
-            -- ( _, _, []) ->
-            --     Ok { datasetRef = Just ds, dataArrayRef = Just da, dimCoords = Just [] }
-            (_, _, _) ->
-                Ok { datasetRef = Just ds, dataArrayRef = Just da, dimCoords = Just coordSpecsInName }
+    Ok { datasetRef = Just ds
+       , dataArrayRef = Just da
+       , dimCoords = Just coordSpecsInName
+       , isExplicitDataArrayRef = isExplDaRef }
 
 -- used in codemirror to parse the range name being entered and propose the next possible tokens
 promptCoordsForPartialRangeName : XModel -> DatasetRef -> String -> List String
 promptCoordsForPartialRangeName xModel curDatasetRef partialName = 
     let
+        --  text after the last "_"
+        getSubstrAndLastToken : String -> (String, String)
+        getSubstrAndLastToken partialNameArg =
+            let
+                -- Find the last token by splitting and reversing the string
+                tokens = String.split "_" partialNameArg
+                lastTokenRet = List.reverse tokens |> List.head |> Maybe.withDefault ""
+                lastTokenLength = String.length lastTokenRet
+                -- Calculate the position to split the string
+                prependedLength = String.length partialNameArg - lastTokenLength
 
-        curDataset = case getDatasetByRef curDatasetRef xModel.datasets  of
+                -- Get the substring before the last token
+                beforeLastToken =
+                    if prependedLength > 0 then
+                        String.left (prependedLength) partialNameArg
+                    else
+                        ""
+            in
+            (beforeLastToken, lastTokenRet)
+
+        (prependedRangeName, lastToken) = getSubstrAndLastToken partialName
+        prependedRangeNameClean = AppUtil.removeTrailingUnderscores prependedRangeName
+        partialRangeDef = rangeNameToDef xModel curDatasetRef prependedRangeNameClean
+        -- updates the datasetRef as specified in the partialRangeDef
+        (dsRef , isExplDaRef) = case partialRangeDef of
+            Ok rangeDef -> case rangeDef.datasetRef of
+                Just dsRefJust -> (dsRefJust, rangeDef.isExplicitDataArrayRef)
+                Nothing -> ("", False) --curDatasetRef -- if no datasetRef in the partialName, keep the current TODO check if this is correct
+            Err _ -> ("" , False) --curDatasetRef
+        ds = case getDatasetByRef dsRef xModel.datasets  of
             Just datasetJust -> datasetJust
             Nothing -> emptyDataset
-        dims = dimsForDataset xModel.dims curDataset
-
-        lastToken = String.split "_" partialName |> List.reverse |> List.head |> Maybe.withDefault ""
-        
-        prependedRangeName = 
-            case String.split "_" partialName of
-                [] -> partialName
-                _ -> (String.split "_" partialName) |> List.reverse |> List.drop 1 |> List.reverse |> String.join "_"
-        
-        partialRangeDef = rangeNameToDef xModel curDatasetRef prependedRangeName
-        
+        dims = dimsForDataset xModel.dims ds
         dimRefsInPartialName = 
             case partialRangeDef of
                 Ok rangeDef  -> case rangeDef.dimCoords of
                     Just dimCoords -> List.map Tuple.first dimCoords
                     Nothing -> []
                 Err _ -> []
-        leftDimRefs = List.filter (\dimRef -> not (List.member dimRef dimRefsInPartialName)) (Dict.keys dims)
-        searchDict  = makeCoordSearchDict xModel curDatasetRef leftDimRefs
+                        
+        searchDict  = makeCoordSearchDict xModel dsRef dimRefsInPartialName isExplDaRef
         
         -- filter for lastToken and fold available coords, if lastToken="*" fold all
         availableCoords : CoordSearchDict -> String -> List String
@@ -2354,9 +2408,9 @@ promptCoordsForPartialRangeName xModel curDatasetRef partialName =
                     List.map Tuple.second sortedCompositeKeys
             in
             sortedCoords
-        prompts = List.map (\r -> prependedRangeName ++ "_" ++ r) (availableCoords searchDict lastToken)
+        prompts = List.map (\r -> prependedRangeName ++  r) (availableCoords searchDict lastToken)
     in
-    prompts
+    prompts  -- [partialName, prependedRangeName , lastToken ]  [Debug.toString searchDict] --
 
 
 
@@ -2455,7 +2509,7 @@ mySub val1 val2 = val1 - val2 -- errors are raised in range parsing
 taxRate : Float -- declaring aconstant expr is not needed, no longer parsing errors
 taxRate = 0.4
 -- to recalc with modified formulas clic Update formulas
-ce__valore_costoVen = ce__valore_ricavi * 0.48
+costoVen = ce__valore_ricavi * 0.48 -- uses expansion of rangeName from getExprDataArray
 -- ce__valore_costoVen = macro__cambioUsdEur_base -- mapping between datasets not working
 ce__valore_margContrib = mySub ce__valore_ricavi ce__valore_costoVen
 ce__valore_ebitda = ce__valore_margContrib - ce__valore_speseVGA

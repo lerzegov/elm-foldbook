@@ -11,7 +11,7 @@ module DatasetPage exposing (..) -- former ingle page Main.elm
 import Platform.Cmd as Cmd
 import Platform.Sub as Sub
 import Task
-import Debug exposing (log)
+import Debug
 -- spreadsheetUI and pivot tables
 -- import PersonValuePivot exposing (..)
 import SpreadsheetUI exposing (..)
@@ -19,27 +19,25 @@ import SpreadsheetUI exposing (..)
 -- Drag and drop
 import DnDTray exposing (..)
 -- Dropdown
-import Dropdown exposing (Msg(..), State, update)
+import Dropdown exposing (Msg(..))
 
 -- XModel and CalcEngine
-import CalcEngine exposing (Msg(..), update, viewConsole)
+import CalcEngine exposing (Msg(..))
 import TypesXModel exposing (XModel )
 import XModel 
 import TypesXModel exposing (..)
 import XView
-import Types exposing (CallTree(..), Error(..), Value(..), Env, Eval)
+import Types exposing (CallTree(..), Error(..), Value(..), Env)
 
 -- elm-interpreter
 import Ports
-import XModelHelpers
-import FormulaParser
+
 
 -- UI
-import Browser
 
-import Html exposing (Html)
+import Html 
 import Html.Attributes as HtmlAttr exposing (style)
-import Html.Events exposing (preventDefaultOn)
+import Html.Events 
 import Element exposing (..)
 import Element.Font as UiFont
 import Element.Background as Background
@@ -47,12 +45,10 @@ import MyColors exposing (..)
 
 import Array
 import Array2D
-import Html exposing (a)
+import Html 
 import FastDict as Dict exposing (Dict)
-import Json.Encode
 import Json.Decode as Decode
-import Maybe.Extra exposing (prev)
-import AppUtil
+import AppUtil exposing (cmdMsg)
 
 
 
@@ -65,39 +61,39 @@ type alias Model =
     , calcModel : CalcEngine.Model
     , autoRecalc : Bool 
     , hints : List String 
-    , editorInitialized : Bool
+    , editorId : String
     }
 
-initialModel : Result Error Env -> DatasetRef -> Model
-initialModel env datasetRef =
+initialModel : Result Error Env -> DatasetRef  -> Model
+initialModel env datasetRef  =
     let
         initialCalcModel = CalcEngine.initialModel env datasetRef
         initialXModel = CalcEngine.getXModelFromEnv env |> Maybe.withDefault XModel.emptyXModel
         initialSpreadsheetUIModel = SpreadsheetUI.initialModel initialXModel datasetRef
         initialDnDTrayModel = DnDTray.initialModel
-        -- initialTrayData = PersonValue.defaultTrayData
         initialTrayData = XView.defaultTrayData initialXModel.dims
                 initialSpreadsheetUIModel.curDataset initialSpreadsheetUIModel.curDatasetView
+        initialEditorId = "editor-" ++ datasetRef
     in
-
-    -- imported components
     { spreadsheetUIModel = initialSpreadsheetUIModel
     , dndTrayModel = { initialDnDTrayModel | trayData = initialTrayData }
     , calcModel = initialCalcModel
     , autoRecalc = False
     , hints = []
-    , editorInitialized = False
+    , editorId = initialEditorId
     }
+
 
 type Msg 
     = DnDTrayMsg DnDTray.Msg
     | SpreadsheetUIMsg SpreadsheetUI.Msg
     | CalcMsg CalcEngine.Msg -- formerly UI.Msg
     -- | Initialize
-    | ReceiveHints (List String)
+    | ReceiveHints {editorId : String, hints :  List String}  -- Include editorId
     | EditorContentChanged String
-    | RequestHints String
+    | RequestHints { editorId : String, word : String }
     | InitEditor
+
 
 
 
@@ -258,96 +254,45 @@ update msg prevEnv model =
             ( { model | calcModel = updatedCalcModel }
               , prevEnv
               , Cmd.none )
-        RequestHints word ->
+        RequestHints { editorId , word  } ->
             let
                 curXModel = getCurXModelFromEnv prevEnv
                 hints = getHints curXModel model.calcModel.datasetRef word
+                editorIdElm = model.editorId
             in
-            -- Debug.log ("RequestHints" ++ Debug.toString hints)
-            -- triggered on all pages
-            (model, prevEnv, sendHintsToJs hints)
+            if editorId == editorIdElm then
+                (model, prevEnv, sendHintsToJs editorId hints)
+            else
+                (model, prevEnv
+                -- , sendHintsToJs editorIdElm ["mismatched editorIds: js=" ++ editorId ++ " and elm=" ++ editorIdElm]
+                , Cmd.none
+                )
 
-        ReceiveHints hints ->
-            ({ model | hints = hints }, prevEnv, Cmd.none)
-
-        InitEditor ->
+        ReceiveHints { editorId, hints } ->
+            if editorId == model.editorId then
+                ({ model | hints = hints }, prevEnv, Cmd.none)
+            else
+                (model, prevEnv, Cmd.none)
+        
+        InitEditor -> -- editor init moved to init as direct port call
             ( model, prevEnv, Cmd.none )
 
 
-sendHintsToJs : List String -> Cmd Msg
-sendHintsToJs hints =
-    let
-        encodedHints = Json.Encode.list Json.Encode.string hints
-    in
-    Ports.receiveHints encodedHints
-
-getCurXModelFromEnv : Result Error Env -> XModel
-getCurXModelFromEnv env  = env |> CalcEngine.getXModelFromEnv |> Maybe.withDefault XModel.emptyXModel
--- add coords like in expression parsing!!!
+sendHintsToJs : String -> List String -> Cmd Msg
+sendHintsToJs editorId hints =
+    let payload = { editorId = editorId, hints = hints } in
+    -- Debug.log ("sendHintsToJs payload" ++ Debug.toString payload)
+    Ports.receiveHints payload
 
 getHints : XModel -> DatasetRef -> String -> List String
 getHints xModel datasetRef word =
     XModel.promptCoordsForPartialRangeName xModel datasetRef word
 
-getHintsOld : XModel -> String -> List String
-getHintsOld xModel word =
-    let
-        parts = FormulaParser.parseHierarchicalName word
-    in
-    case parts of
-        Ok (datasetRef, "", [] ) ->
-            List.filter (String.startsWith datasetRef) xModel.datasetRefs
-                |> List.map (\ref -> FormulaParser.lowerFirst ref )
 
-        Ok (datasetRef, dataArrayRef, []) ->
-            case Dict.get datasetRef xModel.datasets of
-                Just dataset ->
-                    List.filter (String.startsWith dataArrayRef) dataset.dataArrayRefs
-                        |> List.map (\ref -> (FormulaParser.lowerFirst datasetRef) 
-                            ++ "__" ++ ref)
-                Nothing ->
-                    []
+getCurXModelFromEnv : Result Error Env -> XModel
+getCurXModelFromEnv env  = env |> CalcEngine.getXModelFromEnv |> Maybe.withDefault XModel.emptyXModel
+-- add coords like in expression parsing!!!
 
-        Ok (datasetRef, dataArrayRef, dimRefs) ->
-            case Dict.get datasetRef xModel.datasets of
-                Just dataset ->
-                    let
-                        maybeDataArrayWithDims = XModel.getDataArrayWithDimsFromXModel 
-                            xModel datasetRef dataArrayRef
-                    in
-                    case maybeDataArrayWithDims of
-                        Just dataArray ->
-                            let
-                                remainingDims = List.drop (List.length dimRefs) (dataArray.localDimRefs |> Maybe.withDefault [])
-                                availableCoords = remainingDims 
-                                    |> List.concatMap (\dim -> 
-                                            List.map    (\coord -> dim ++ "." ++ coord) 
-                                                        (Dict.get dim xModel.dims  |> Maybe.withDefault Array.empty |> Array.toList)
-                                                      )
-                                dimRefLast = List.head (List.reverse dimRefs)
-                                dimRefPrev = List.drop 1 (List.reverse dimRefs) |> List.reverse
-                                dimRefPrevStr = 
-                                    if dimRefPrev == [] then
-                                        ""
-                                    else
-                                        "_" ++ (String.join "_" dimRefPrev)
-                            in
-                            List.filter (String.startsWith (Maybe.withDefault "" dimRefLast)) availableCoords
-                                |> List.map (\coord -> (FormulaParser.lowerFirst datasetRef) 
-                                    ++ "__" ++ dataArrayRef ++ dimRefPrevStr ++ "_" ++ coord)
-                        Nothing ->
-                            []
-                Nothing ->
-                    []
-
-        _ ->
-            []
-
--- helper function to filter available coords for a dimRef
-filterAvailableCoords : List DimRef -> Dict DimRef (List Coord) -> List Coord
-filterAvailableCoords remainingDims dims =
-    remainingDims
-        |> List.concatMap (\dim -> List.map (\coord -> dim ++ "." ++ coord) (Dict.get dim dims |> Maybe.withDefault []))
 
 -- used in DnDTrayMsg subMsg, returns updated SpreadsheetUI.Model set to model.spreadsheetUIModel
 -- then continues with update cellsUI from spreadsheetUI
@@ -383,10 +328,16 @@ view curEnv model =
         lenSpreadsheetWidth = 1200 -- 600px
         curXModel = curEnv |> CalcEngine.getXModelFromEnv |> Maybe.withDefault XModel.emptyXModel
         editorElement =
-                Element.html <| Html.node "code-mirror-editor"
-                    [ HtmlAttr.attribute "data-initial-value" model.calcModel.input
-                    , Html.Events.on "contentChanged" (Decode.map EditorContentChanged (Decode.at [ "detail" ] Decode.string))
-                    ] []
+            -- aborted attempt to generate editorId with a Task, here was pased -- model.editorId of
+            case Just model.editorId of 
+                Just editorId ->
+                    Element.html <| Html.node "code-mirror-editor"
+                        [ HtmlAttr.attribute "data-initial-value" model.calcModel.input
+                        , HtmlAttr.attribute "id" editorId
+                        , Html.Events.on "contentChanged" (Decode.map EditorContentChanged (Decode.at [ "detail" ] Decode.string)) 
+                        ] []
+                Nothing ->
+                    Element.none
 
     in 
     column [ inFront modalView ] -- messi 600px larghezza sheet si adatta se superiore no se inferiore
@@ -460,18 +411,36 @@ htmlAttributes =
     List.map htmlAttribute
 
 
-init : Result Error Env -> DatasetRef -> (Model, Result Error Env , Cmd Msg)
+-- init : Result Error Env -> DatasetRef -> (Model, Result Error Env, Cmd Msg)
+-- init env datasetRef =
+--     let
+--         model = initialModel env datasetRef
+--         initialFocusCmd = Cmd.none -- Cmd.map SpreadsheetUIMsg SpreadsheetUI.focusA1
+--         curCalcModel = model.calcModel
+--         initializeEditorCmd = Ports.initializeEditor { editorId = editorId, initialValue = curCalcModel.input }
+--         initEditorUpdateMsg = AppUtil.cmdMsg (InitializeEditor )
+--     in
+--     ( { model | editorInitialized = False }
+--     , env
+--     , Cmd.batch [initialFocusCmd, initializeEditorCmd, initEditorUpdateMsg]
+--     )
+init : Result Error Env -> DatasetRef -> (Model, Result Error Env, Cmd Msg)
 init env datasetRef =
     let
         model = initialModel env datasetRef
-        initialFocusCmd = Cmd.none -- Cmd.map SpreadsheetUIMsg SpreadsheetUI.focusA1
-        initializeEditorCmd = Ports.initializeEditor ("editor", model.calcModel.input)
-        initEditorUpdateMsg = AppUtil.cmdMsg InitEditor
+        -- editorId = model.editorId
+        -- initialFocusCmd = Cmd.none -- Cmd.map SpreadsheetUIMsg SpreadsheetUI.focusA1
+        -- payload = { editorId = editorId, initialValue = model.calcModel.input }
+        -- initializeEditorCmd = Ports.initializeEditor payload
+        -- initEditorUpdateMsg = cmdMsg InitEditor -- cmdMsg InitEditorWithId
     in
-    ( {model | editorInitialized = False }
+    -- Debug.log ("init model payload" ++ Debug.toString payload) -- ok is executed
+    (model
     , env
-    , Cmd.batch [initialFocusCmd, initializeEditorCmd, initEditorUpdateMsg]
-    )
+    --, Cmd.batch [initialFocusCmd, initializeEditorCmd, initEditorUpdateMsg])
+    , Cmd.none) -- initializeEditorCmd is executed in the view
+
+
 
 
 

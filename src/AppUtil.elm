@@ -4,7 +4,36 @@ import List.Extra as ListExtra
 import Regex exposing (Regex, contains)
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (Decimals(..), Locale, System(..), frenchLocale, spanishLocale, usLocale)
-import Task
+import Task exposing (Task)
+import Time exposing (Posix, posixToMillis, now)
+import Debug
+
+myLog : String -> a -> a
+myLog message value =
+    let
+        logOutput = message ++ ": " ++ Debug.toString value
+    in
+    Debug.log logOutput value
+
+removeTrailingUnderscores : String -> String
+removeTrailingUnderscores str =
+    let
+        -- Helper function to check if a string ends with "__"
+        endsWithDoubleUnderscore s =
+            String.endsWith "_" s
+    in
+    -- Loop until the string no longer ends with "__"
+    if endsWithDoubleUnderscore str then
+        removeTrailingUnderscores (String.dropRight 1 str)
+    else
+        str
+
+nowStr : Task x String
+nowStr = 
+    now
+    |> Task.map posixToMillis
+    |> Task.map String.fromInt
+
 
 cmdMsg : msg -> Cmd msg
 cmdMsg message =

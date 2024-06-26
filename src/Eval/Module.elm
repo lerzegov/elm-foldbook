@@ -263,7 +263,7 @@ buildInitialEnv curEnv file =
                         env1 = Environment.addFunction moduleName implementation env
                         env2 = Environment.addFunctionCalcOrder moduleName funcName env1
                     in
-                    Debug.log (Debug.toString moduleName ++ Debug.toString funcName)
+                    -- Debug.log (Debug.toString moduleName ++ Debug.toString funcName)
                     Ok env2
                 -- unsupported declarations
                 PortDeclaration _ ->

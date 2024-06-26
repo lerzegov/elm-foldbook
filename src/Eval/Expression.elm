@@ -498,7 +498,7 @@ evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
                 ( [], Just (PartiallyApplied localEnv [] [] maybeName implementation) ) ->
                     call maybeName implementation cfg localEnv
 
-                ( [], Just value ) ->
+                ( [], Just value ) -> -- is in env.values
                     Types.succeedPartial value
 
                 _ ->
@@ -547,38 +547,60 @@ evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
 
                         Nothing -> -- gig7
                             -- case added by Luca
-                            case parseHierarchicalName name of
-                                Ok (datasetRef, dataArrayRef, []) ->
-                                    case XModel.getParsedDataArrayToValue env.envXModel datasetRef dataArrayRef of
-                                        Just value ->
-                                            Types.succeedPartial value
-                                        Nothing ->
-                                            (Syntax.qualifiedNameToString
-                                                { moduleName = fixedModuleName
-                                                , name = name
-                                                } ++ "-gig7:noDataArray")
-                                                |> nameError env
-                                                |> Types.failPartial
-                                Ok (datasetRef, dataArrayRef, listCoords) ->
-                                    case XModel.locParsedDataArrayToValue env.envXModel datasetRef dataArrayRef listCoords of
-                                        Just value ->
-                                            Types.succeedPartial value
-                                        Nothing ->
-                                            (Syntax.qualifiedNameToString
-                                                { moduleName = fixedModuleName
-                                                , name = name
-                                                } ++ "-gig7:wrongLocParsedDataArray")
-                                                |> nameError env
-                                                |> Types.failPartial
-                                _ ->
-                                    (Syntax.qualifiedNameToString
-                                        { moduleName = fixedModuleName
-                                        , name = name
-                                        } ++ "-gig7-parseError on name: " ++ name ++ " " 
-                                            --++ Debug.toString(CalcEngine.getEnvFunctions env "Ce")
-                                        )
-                                        |> nameError env
-                                        |> Types.failPartial
+                            let
+                               
+                                maybeXModel = env.envXModel
+                                maybeDatasetRef = List.head fixedModuleName
+                                retRangeDef = case (maybeXModel, maybeDatasetRef) of
+                                    (Just xModel, Just curDatasetRef) -> 
+                                        XModel.rangeNameToDef xModel curDatasetRef name
+                                    _ -> Err "error in getExprDataArray from rangeNameToDef"
+                            in
+                            -- Debug.log ("with moduleName=" ++ Debug.toString moduleName ++ " and curDatasetRef=" ++ Debug.toString maybeDatasetRef ++ " retRangeDef: " ++ Debug.toString retRangeDef) <|
+                            case retRangeDef of
+                                    Ok rangeDef ->
+                                        case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
+                                            (Just datasetRef, Just dataArrayRef, Just []) ->
+                                                case XModel.getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef of
+                                                    Just value ->
+                                                        Types.succeedPartial value
+                                                    Nothing ->
+                                                        (Syntax.qualifiedNameToString
+                                                            { moduleName = fixedModuleName
+                                                            , name = name
+                                                            } ++ "-gig7:noDataArray")
+                                                            |> nameError env
+                                                            |> Types.failPartial
+                                            (Just datasetRef, Just dataArrayRef, Just dimCoordTuples) ->
+                                                case XModel.locDataArrayfromRangeDefToValue maybeXModel datasetRef dataArrayRef dimCoordTuples of
+                                                    Just value ->
+                                                        Types.succeedPartial value
+                                                    Nothing ->
+                                                        (Syntax.qualifiedNameToString
+                                                            { moduleName = fixedModuleName
+                                                            , name = name
+                                                            } ++ "-gig7:wrongLocParsedDataArray")
+                                                            |> nameError env
+                                                            |> Types.failPartial
+                                            (_, _, _) ->
+                                                 (Syntax.qualifiedNameToString
+                                                    { moduleName = fixedModuleName
+                                                    , name = name
+                                                    } ++ "-gig7-parseError on name: " ++ name ++ " " 
+                                                        --++ Debug.toString(CalcEngine.getEnvFunctions env "Ce")
+                                                    )
+                                                    |> nameError env
+                                                    |> Types.failPartial
+
+                                    _ ->
+                                        (Syntax.qualifiedNameToString
+                                            { moduleName = fixedModuleName
+                                            , name = name
+                                            } ++ "-gig8-parseError on name: " ++ name ++ " " 
+                                                --++ Debug.toString(CalcEngine.getEnvFunctions env "Ce")
+                                            )
+                                            |> nameError env
+                                            |> Types.failPartial
                             
 
 evalIfBlock : Node Expression -> Node Expression -> Node Expression -> PartialEval Value

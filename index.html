@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,108 +9,99 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/edit/matchbrackets.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/elm/elm.js"></script> <!-- Include Elm mode -->
-    <!-- autocompletion-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/elm/elm.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/hint/show-hint.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/hint/show-hint.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/addon/hint/anyword-hint.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;700&display=swap" rel="stylesheet">
 </head>
-  <body>
-    <main></main>
-    <script src="./dist/ui.js"></script>
-    <script>
-        // Custom Element Definition
-        class CodeMirrorElement extends HTMLElement {
-            connectedCallback() {
-                this.initCodeMirror();
-            }
+<body>
+<main></main>
+<script src="./dist/ui.js"></script>
+<script>
+// container for all the editors
+class CodeMirrorElement extends HTMLElement {
+    connectedCallback() {
+        this.initCodeMirror();
+    }
 
-            initCodeMirror() {
-                const editorContainer = document.createElement('textarea');
-                editorContainer.value = this.getAttribute('data-initial-value') || '';
-                this.appendChild(editorContainer);
+    initCodeMirror() {
+        const editorId = this.getAttribute('id');
+        const editorContainer = document.createElement('textarea');
+        editorContainer.id = editorId + '-textarea'; // Assigning id to textarea
+        editorContainer.value = this.getAttribute('data-initial-value') || '';
+        this.appendChild(editorContainer);
 
-                const editor = CodeMirror.fromTextArea(editorContainer, {
-                    mode: "elm",
-                    lineNumbers: true,
-                    matchBrackets: true,
-                    extraKeys: {
-                        "Ctrl-Space": "autocomplete"
-                    },
-                    hintOptions: { completeSingle: false }
-                });
-
-                editor.on("change", () => {
-                    const event = new CustomEvent('contentChanged', { detail: editor.getValue() });
-                    this.dispatchEvent(event);
-                });
-
-                // Trigger autocompletion on input
-                editor.on("inputRead", function () {
-                    editor.showHint({ hint: CodeMirror.hint.elm });
-                });
-            }
-        }
-
-        customElements.define('code-mirror-editor', CodeMirrorElement);
-
-        var app = Elm.Main.init({
-            node: document.querySelector("main"),
+        const editor = CodeMirror.fromTextArea(editorContainer, {
+            mode: "elm",
+            lineNumbers: true,
+            matchBrackets: true,
+            extraKeys: {
+                "Ctrl-Space": "autocomplete"
+            },
+            hintOptions: { completeSingle: false }
         });
 
-        // Store the hints received from Elm
-        var receivedHints = [];
-
-        // Function to handle receiveHints port
-        app.ports.receiveHints.subscribe(function(hints) {
-            receivedHints = hints;
+        editor.on("change", () => {
+            setTimeout(() => {
+                const event = new CustomEvent('contentChanged', { detail: editor.getValue() });
+                this.dispatchEvent(event);
+                editor.showHint({ hint: CodeMirror.hint.elm });
+            }, 10); // Small delay to ensure text is up-to-date
         });
 
-        function elmHint(editor) {
-            var cur = editor.getCursor();
-            var token = editor.getTokenAt(cur);
-            var start = token.start;
-            var end = token.end;
-            var word = token.string;
+        this.editor = editor;
+    }
+}
 
-            // Request hints from Elm
-            app.ports.requestHints.send(word);
+customElements.define('code-mirror-editor', CodeMirrorElement);
 
-            return {
-                list: receivedHints,
-                from: CodeMirror.Pos(cur.line, start),
-                to: CodeMirror.Pos(cur.line, end)
-            };
-        }
-
-        CodeMirror.registerHelper("hint", "elm", elmHint);
-
-        app.ports.initializeEditor.subscribe(function(args) {
-            var id = args[0];
-            var initialValue = args[1];
-
-            function initializeEditor() {
-                var editorElement = document.getElementById(id);
-                if (editorElement) {
-                    editorElement.setAttribute('data-initial-value', initialValue);
-                } else {
-                    requestAnimationFrame(initializeEditor);
-                }
-        }
-
-    requestAnimationFrame(initializeEditor);
+var app = Elm.Main.init({
+    node: document.querySelector("main"),
 });
 
+// Function to handle receiveHints port
+app.ports.receiveHints.subscribe(function(payload) {
+    // console.log("Payload received from Elm:", payload);
+    var editorId = payload.editorId;
+    var hints = payload.hints;
 
-        document.addEventListener('contentChanged', function(event) {
-            app.ports.editorContentChanged.send(event.detail);
-        });
+    var editorElement = document.getElementById(editorId + '-textarea'); // Match the textarea ID
+    if (editorElement && editorElement.parentElement.editor) {
+        editorElement.parentElement.editor.hints = hints;
+    } else {
+        console.error(`Editor with id ${editorId} not found.`);
+    }
+});
 
-        // Handle the openNewTab port
-        app.ports.openNewTab.subscribe(function(url) {
-            window.open(url, '_blank');
-        });
-    </script>
-  </body>
+function elmHint(editor) {
+    var editorId = editor.getWrapperElement().parentElement.id.split('-textarea')[0]; // Adjusted to match the parent element's ID
+    var cur = editor.getCursor();
+    var token = editor.getTokenAt(cur);
+    var start = token.start;
+    var end = token.end;
+    var word = token.string;
+    // console.log("editor id", editorId);
+    // Request hints from Elm
+    app.ports.requestHints.send({ editorId: editorId, word: word });
+
+    return {
+        list: editor.hints || [],
+        from: CodeMirror.Pos(cur.line, start),
+        to: CodeMirror.Pos(cur.line, end)
+    };
+}
+
+CodeMirror.registerHelper("hint", "elm", elmHint);
+
+
+document.addEventListener('contentChanged', function(event) {
+    app.ports.editorContentChanged.send(event.detail);
+});
+
+// Handle the openNewTab port
+app.ports.openNewTab.subscribe(function(url) {
+    window.open(url, '_blank');
+});
+</script>
+</body>
 </html>

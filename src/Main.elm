@@ -6,7 +6,7 @@ import Html exposing (Html, div, text)
 import Element exposing (..)
 import Element.Font exposing (Font)
 import Home
-import DatasetPage
+import DatasetPage exposing (Msg(..))
 import Routes exposing (..)
 import Types exposing (..)
 import Ports exposing (..)
@@ -15,6 +15,8 @@ import Eval.Module as Module
 import XModel
 import TypesXModel exposing (..)
 import FastDict as Dict exposing (Dict)
+import Time
+import Task
 
 
 type alias Model =
@@ -51,7 +53,9 @@ init _ url key =
                 Just env -> Ok env
                 Nothing -> Err (IncompleteCodeError "Failed to initialize environment")
         initDatasetPages = List.foldl (\dSet dPageAcc ->
-            let (dPageModel, _ , _) = DatasetPage.init initialEnv dSet.ref in
+            let 
+                (dPageModel, pageEnv , pageCmd) = DatasetPage.init initialEnv dSet.ref
+            in
             Dict.insert dSet.ref dPageModel dPageAcc
             ) Dict.empty startDSets
         
@@ -63,6 +67,7 @@ init _ url key =
             , key = key
             }
     in
+    -- Debug.log "called Main.init" <| called also on new tab open but once
     (initialModel, Cmd.none)
 
 
