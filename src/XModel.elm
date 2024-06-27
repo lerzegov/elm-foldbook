@@ -54,16 +54,6 @@ insertDataset ref dataset datasets =
     Dict.insert ref dataset datasets
 
 -- === helper functions for parsing and converting data arrays to Value types used by the interpreter ===
-dataArrayToXValue : DataArray -> Array XValue
-dataArrayToXValue dataArray =
-    if isDataArrayText dataArray then
-        Array.map (\s -> XString s) dataArray.text
-    else if isDataArrayData dataArray then
-        Array.map (\f -> XFloat f) dataArray.data
-    else if isDataArrayMixed dataArray then -- data prevails
-        Array.map (\i -> if i == 0/0 then XEmpty else XFloat i) dataArray.data
-    else
-        Array.empty
 
 -- PROVISIONAL: manage collisions amomg coord names and error handling in returned list
 dimsToCoordDimDict : Dims -> Dict Coord DimRef
@@ -109,30 +99,6 @@ getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef hasExternalDataset
         ) (getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef)
     ) maybeXModel
 
-locParsedDataArray : Maybe XModel -> DatasetRef -> DataArrayRef -> List Coord -> Maybe DataArray
-locParsedDataArray maybeXModel datasetRef dataArrayRef coords =
-    case maybeXModel of
-        Just xModel ->
-            let
-                arrayWithDims = getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef
-            in
-            if List.isEmpty coords then
-                arrayWithDims
-            else
-            case  arrayWithDims of
-                Just dataArray ->
-                    let
-                        dimCoordTuples = coordsToDimCoordSpecs (dataArray.localDims |> Maybe.withDefault Dict.empty) coords
-                        locArray = locAr dataArray dimCoordTuples
-                    in
-                    case locArray of
-                        Just locArrayJust -> 
-                            Just locArrayJust
-                        Nothing -> Nothing
-                Nothing ->
-                    Nothing
-        Nothing ->
-            Nothing
 locDataArrayfromRangeDef : Maybe XModel -> DatasetRef -> DataArrayRef -> List (DimRef, CoordSpecifier) -> Maybe DataArray
 locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples =
     case maybeXModel of
@@ -158,10 +124,6 @@ locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples =
             Nothing
 
 
-locParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List Coord -> Bool -> Maybe Value
-locParsedDataArrayToValue maybeXModel datasetRef dataArrayRef coords hasExternalDataset =
-    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray hasExternalDataset)) 
-        (locParsedDataArray maybeXModel datasetRef dataArrayRef coords)
 
 
 locDataArrayfromRangeDefToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List (DimRef, CoordSpecifier) -> Bool
@@ -247,48 +209,6 @@ getDataArrayByDVarIndex dataset dVarIndex =
         Nothing ->
             emptyDataArray
 
-datasetToValue : Dataset -> Value
-datasetToValue dataset =
-    Record <| Dict.fromList
-        [ ("ref", String dataset.ref)
-        , ("dimRefs", strListToValue dataset.dimRefs)
-        , ("dataArrayRefs", strListToValue dataset.dataArrayRefs)
-        , ("dataArrays", dataArraysToValue dataset.dataArrays) -- not shortened to ds
-        , ("moduleSource", String dataset.formulas)
-        , ("defaultDataArrayRef", case dataset.defaultDataArrayRef of
-                Just ref -> String ref
-                Nothing -> String ""
-            )
-        ]
-datasetWithArDimsToValue : XModel -> Dataset -> Value
-datasetWithArDimsToValue xModel dataset =
-    Record <| Dict.fromList
-        [ ("ref", String dataset.ref)
-        , ("dimRefs", strListToValue dataset.dimRefs)
-        , ("dataArrayRefs", strListToValue dataset.dataArrayRefs)
-        , ("dataArrays", dataArraysWithDimsToValue xModel dataset.dataArrays) -- not shortened to ds
-        , ("moduleSource", String dataset.formulas)
-        , ("defaultDataArrayRef", case dataset.defaultDataArrayRef of
-                Just ref -> String ref
-                Nothing -> String ""
-            )
-        ]
-xModelToValue : XModel -> Value
-xModelToValue xModel =
-    Record <| Dict.fromList
-        [ ("modelRef", String xModel.modelRef)
-        , ("datasets", datasetsToValue xModel.datasets) -- shortened to ds as env value
-        , ("dims", dimsToValueAsList xModel.dims)
-        , ("datasetToRecalc", xModel.datasetToRecalc |> Maybe.map String |> Maybe.withDefault (String ""))
-        ]
-
-xModelWithArDimsToValue : XModel -> Value
-xModelWithArDimsToValue xModel =
-    Record <| Dict.fromList
-        [ ("datasets", datasetsWithArDimsToValue xModel ) -- shortened to ds as env value
-        , ("dims", dimsToValueAsList xModel.dims)
-        , ("datasetToRecalc", xModel.datasetToRecalc |> Maybe.map String |> Maybe.withDefault (String ""))
-        ]
 strArrayToValue : Array String -> Value
 strArrayToValue strArray =
     JsArray <| Array.map String strArray
@@ -300,23 +220,6 @@ strListToValue strList =
 floatArrayToValue : Array Float -> Value
 floatArrayToValue floatArray =
     JsArray <| Array.map Float floatArray
-
-dataArraysToValue : DataArrays -> Value -- not used by interpreter, hasExternalDataset set to False
-dataArraysToValue dataArrays =
-    Record <| Dict.map (\_ dataArray -> dataArrayToValue dataArray False) dataArrays
-
-dataArraysWithDimsToValue : XModel -> DataArrays -> Value
-dataArraysWithDimsToValue xModel dataArrays =
-    Record <| Dict.map (\_ dataArray -> dataArrayWithDimsToValue dataArray False) dataArrays
-
-datasetsToValue : Datasets -> Value
-datasetsToValue datasets =
-    Record <| Dict.map (\_ dataset -> datasetToValue dataset) datasets
-
-datasetsWithArDimsToValue : XModel -> Value
-datasetsWithArDimsToValue xModel  =
-    Record <| Dict.map (\_ dataset -> datasetWithArDimsToValue xModel dataset) xModel.datasets
-
 
 dimsToValue : Dims -> Value
 dimsToValue dims =
@@ -438,75 +341,6 @@ valueToDataArray value =
             emptyDataArray
 
 
-valueToDataset : Value -> Dataset
-valueToDataset value =
-    case value of
-        Record dict ->
-            let
-                ref = case Dict.get "ref" dict of
-                    Just (String s) -> s
-                    _ -> ""
-                
-                dimRefs = case Dict.get "dimRefs" dict of
-                    Just val -> valueToStrList val
-                    _ -> []
-                
-                dataArrayRefs = case Dict.get "dataArrayRefs" dict of
-                    Just val -> valueToStrList val
-                    _ -> []
-                
-                dataArrays = case Dict.get "dataArrays" dict of
-                    Just val -> valueToDataArrays val
-                    _ -> Dict.empty
-                moduleSource = case Dict.get "moduleSource" dict of
-                    Just (String s) -> s
-                    _ -> ""
-                defaultDataArrayRef = case Dict.get "defaultDataArrayRef" dict of
-                    Just (String s) -> Just s
-                    _ -> Nothing
-            in
-            Dataset ref dimRefs dataArrayRefs dataArrays moduleSource defaultDataArrayRef
-        _ ->
-            Dataset "" [] [] Dict.empty "" Nothing
-valueToDataArrays : Value -> DataArrays
-valueToDataArrays value =
-    case value of
-        Record dict ->
-            Dict.map (\_ val -> valueToDataArray val) dict
-        _ -> Dict.empty
-
-valueToDatasets : Value -> Datasets
-valueToDatasets value =
-    case value of
-        Record dict ->
-            Dict.map (\_ val -> valueToDataset val) dict
-        _ -> Dict.empty
-
-valueToXModel : Value -> XModel
-valueToXModel value =
-    case value of
-        Record dict ->
-            let
-                modelRef = case Dict.get "modelRef" dict of
-                    Just (String val) -> val
-                    _ -> ""
-                datasetRefs = case Dict.get "datasetRefs" dict of
-                    Just val -> valueToStrList val
-                    _ -> []
-                datasets = case Dict.get "datasets" dict of
-                    Just val -> valueToDatasets val
-                    _ -> Dict.empty
-                
-                dims = case Dict.get "dims" dict of
-                    Just val -> valueToDims val
-                    _ -> Dict.empty
-                datasetToRecalc = case Dict.get "datasetToRecalc" dict of
-                    Just (String s) -> Just s
-                    _ -> Nothing
-            in
-            XModel modelRef datasetRefs datasets dims  datasetToRecalc
-        _ ->
-            XModel "" [] Dict.empty Dict.empty  Nothing
 
 -- FUNCTIONS FOR HANDLING STRUCTURE AND DATA
 
