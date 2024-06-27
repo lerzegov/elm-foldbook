@@ -412,26 +412,7 @@ getEnvFunctions envModelField datasetRef =
                     in
                     funcList
                 Err _ -> Nothing
-
-handleResult : Result String RangeDef -> String
-handleResult result =
-    case result of
-        Ok rangeDef ->
-            case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
-                (Just dataset, Just dataArray, Just []) ->
-                    "Both datasetRef and dataArrayRef are present, but dimCoords is an empty list."
-
-                (Just dataset, Just dataArray, Just coords) ->
-                    if List.length coords > 0 then
-                        "Both datasetRef and dataArrayRef are present, and dimCoords is a non-empty list."
-                    else
-                        "Both datasetRef and dataArrayRef are present, but dimCoords is an empty list."
-                
-                _ ->
-                    "Other case."
-
-        Err errMsg ->
-            "Error: " ++ errMsg
+-- used to get the dataArray for LHS expressions, without data if they are not calculated yet
 getExprDataArray : Maybe XModel -> DatasetRef -> String -> Result String DataArray
 getExprDataArray maybeXModel curDatasetRef expression = 
     case maybeXModel of
@@ -465,12 +446,14 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
         curXModel = getXModelFromEnv prevEnv |> Maybe.withDefault XModel.emptyXModel
 
         curDatasetRef = curModel.datasetRef
+        -- get the LHS of the formula as a DataArray with data as before calc
         exprDataArray = getExprDataArray (Just curXModel) curDatasetRef expression
-        moduleFromDataset = curDatasetRef
+        moduleFromDataset = curDatasetRef -- module name is the datasetRef, both capitalized
 
         retModelEnv  = case exprDataArray of
             Ok dataArray ->
                 let
+                    -- trigger the evaluation of the expression and get result plus logging and trace info
                     ( result, callTree, logLines ) =
                         Module.evalModuleWithEnv
                             "" -- moduleSource => not passed to avoid repeated useless parsing
@@ -489,18 +472,25 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
                                 [ tree ] -> Just (CallTreeZipper { parent = Nothing, current = tree })
                                 _ -> Nothing
                         }
+                    -- main calc loop
                     updatedModelEnv = 
-                        case result of
+                        case result of -- result may wrap a structured dataArray reference
+                            -- TODO add cases for singleton results and external dataarray
+                            --      that is not currently remapped
                             Ok (DataAr calcDataArValue) ->
                                 let
+                                    -- convert the calculated DataAr value to an XModel.DataArray
                                     calculatedDAr = XModel.valueToDataArray (DataAr calcDataArValue)
+                                    -- fix the datasetRef and localDims of the calculated DataArray to the computed LHS
                                     calculatedDArRenamed = { calculatedDAr 
-                                        | datasetRef = Just curModel.datasetRef -- changed to debug 15/6
+                                        | datasetRef = Just curModel.datasetRef 
                                         , localDims = dataArray.localDims
                                         , localDimRefs = dataArray.localDimRefs }
+                                    -- force to String
                                     datasetRef = calculatedDArRenamed.datasetRef |> Maybe.withDefault ""
                                     arRef = dataArray.ref
                                     dataset = Dict.get datasetRef curXModel.datasets |> Maybe.withDefault XModel.emptyDataset
+                                    -- cannot use dataArray from above? no, it is a range dataArray, not a full dataArray
                                     daToUpdate = Dict.get arRef dataset.dataArrays |> Maybe.withDefault XModel.emptyDataArray
                                     updatedDArResult = XModel.updateDataArrayPair curXModel 
                                         (Ok daToUpdate) (Ok calculatedDArRenamed) XModel.refreshWithValPart

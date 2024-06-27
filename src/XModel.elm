@@ -101,11 +101,11 @@ getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef =
         ) (Dict.get dataArrayRef dataset.dataArrays)
     ) (Dict.get datasetRef xModel.datasets)
 
-getParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> Maybe Value
-getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef =
+getParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> Bool -> Maybe Value
+getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef hasExternalDataset=
     Maybe.andThen (\xModel ->
         Maybe.andThen (\dataArray ->
-            Just (dataArrayWithDimsToValue dataArray)
+            Just (dataArrayWithDimsToValue dataArray hasExternalDataset)
         ) (getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef)
     ) maybeXModel
 
@@ -158,15 +158,16 @@ locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples =
             Nothing
 
 
-locParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List Coord -> Maybe Value
-locParsedDataArrayToValue maybeXModel datasetRef dataArrayRef coords =
-    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray)) 
+locParsedDataArrayToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List Coord -> Bool -> Maybe Value
+locParsedDataArrayToValue maybeXModel datasetRef dataArrayRef coords hasExternalDataset =
+    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray hasExternalDataset)) 
         (locParsedDataArray maybeXModel datasetRef dataArrayRef coords)
 
 
-locDataArrayfromRangeDefToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List (DimRef, CoordSpecifier)  -> Maybe Value
-locDataArrayfromRangeDefToValue maybeXModel datasetRef dataArrayRef dimCoordTuples =
-    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray)) 
+locDataArrayfromRangeDefToValue : Maybe XModel -> DatasetRef -> DataArrayRef -> List (DimRef, CoordSpecifier) -> Bool
+            -> Maybe Value
+locDataArrayfromRangeDefToValue maybeXModel datasetRef dataArrayRef dimCoordTuples hasExternalDataset =
+    Maybe.andThen (\locArray -> Just (dataArrayWithDimsToValue locArray hasExternalDataset)) 
         (locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples)
 
 
@@ -184,8 +185,8 @@ coordsToDimCoordSpecs dims coords =
 -- conversions to elm-interpreter Value type (coded by chatgpt)
 -- NB Record is a Value type that can be hyerarchically accessed IN THE CONSOLE     
 -- with the dot notation, like a JSON object
-dataArrayToValue : DataArray -> Value
-dataArrayToValue dataArray =
+dataArrayToValue : DataArray -> Bool -> Value
+dataArrayToValue dataArray hasExternalDataset =
     let locDims = dataArray.localDims in
     DataAr <| Dict.fromList
         [ ("ref", String dataArray.ref)
@@ -199,10 +200,12 @@ dataArrayToValue dataArray =
                 Just dimRefs -> strListToValue dimRefs
                 Nothing -> List []
             )
+        , ("hasExternalDataset", Bool hasExternalDataset)
         ]
 
-dataArrayWithDimsToValue : DataArray -> Value
-dataArrayWithDimsToValue dataArray =
+dataArrayWithDimsToValue : DataArray -> Bool -> Value
+dataArrayWithDimsToValue dataArray hasExternalDataset =
+
     let 
         localDims = dataArray.localDims 
         localdimRefs = dataArray.localDimRefs
@@ -219,6 +222,7 @@ dataArrayWithDimsToValue dataArray =
                 , ("text", strArrayToValue dataArray.text)
                 , ("localDims", dimsToValueAsList dimsJust)
                 , ("localDimRefs", strListToValue dimRefsJust)
+                , ("hasExternalDataset", Bool hasExternalDataset)
                 ]
         _ ->
             DataAr <| Dict.fromList
@@ -228,6 +232,7 @@ dataArrayWithDimsToValue dataArray =
                 , ("text", strArrayToValue Array.empty)
                 , ("localDims", List [])
                 , ("localDimRefs", List [])
+                 , ("hasExternalDataset", Bool hasExternalDataset)
                 ]
 
 
@@ -296,13 +301,13 @@ floatArrayToValue : Array Float -> Value
 floatArrayToValue floatArray =
     JsArray <| Array.map Float floatArray
 
-dataArraysToValue : DataArrays -> Value
+dataArraysToValue : DataArrays -> Value -- not used by interpreter, hasExternalDataset set to False
 dataArraysToValue dataArrays =
-    Record <| Dict.map (\_ dataArray -> dataArrayToValue dataArray) dataArrays
+    Record <| Dict.map (\_ dataArray -> dataArrayToValue dataArray False) dataArrays
 
 dataArraysWithDimsToValue : XModel -> DataArrays -> Value
 dataArraysWithDimsToValue xModel dataArrays =
-    Record <| Dict.map (\_ dataArray -> dataArrayWithDimsToValue dataArray) dataArrays
+    Record <| Dict.map (\_ dataArray -> dataArrayWithDimsToValue dataArray False) dataArrays
 
 datasetsToValue : Datasets -> Value
 datasetsToValue datasets =
@@ -400,7 +405,7 @@ valueToDimTuple value =
         Tuple (String dimRef) (JsArray coordArray) ->
             (dimRef, valueToStrArray (JsArray coordArray))
         _ -> ("", Array.empty)
-
+-- hasExternalDataset not marshalled into xModel, used only in the interpreter
 valueToDataArray : Value -> DataArray
 valueToDataArray value =
     case value of
@@ -2510,7 +2515,9 @@ taxRate : Float -- declaring aconstant expr is not needed, no longer parsing err
 taxRate = 0.4
 -- to recalc with modified formulas clic Update formulas
 costoVen = ce__valore_ricavi * 0.48 -- uses expansion of rangeName from getExprDataArray
--- ce__valore_costoVen = macro__cambioUsdEur_base -- mapping between datasets not working
+-- mapping between datasets thanks to order swap in evalNonVariant before 
+-- executing Kernel.twoNumbers when a binary func is applied
+-- costoVen = macro__cambioUsdEur_base * ricavi 
 ce__valore_margContrib = mySub ce__valore_ricavi ce__valore_costoVen
 ce__valore_ebitda = ce__valore_margContrib - ce__valore_speseVGA
 ce__valore_ebit = ce__valore_ebitda - ce__valore_amm 

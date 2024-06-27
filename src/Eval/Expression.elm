@@ -25,8 +25,8 @@ import Value exposing (nameError, typeError, unsupported)
 import Elm.RawFile exposing (moduleName)
 import TypesXModel exposing (..)
 import XModel 
-import FormulaParser exposing (parseHierarchicalName)
 import FastDict as Dict exposing (Dict)
+import Array exposing (Array)
 
 
 
@@ -473,18 +473,18 @@ evalVariant moduleName env name = -- returns a Variant with Union name and varia
 evalNonVariant : ModuleName -> String -> PartialEval Value
 evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
     case moduleName of
-        "Elm" :: "Kernel" :: _ ->
-            case Dict.get moduleName env.functions of
-                Nothing ->
+        "Elm" :: "Kernel" :: _ -> -- checks if moduleName is Elm.Kernel._ e.g. Basics (math bool), Bitwise, Debug, List, String, Utils, JsArray
+            case Dict.get moduleName env.functions of -- checks if Elm.Kernel is extended in env.functions
+                Nothing ->  -- extension module not found, executes evalKernelFunction
                     evalKernelFunction moduleName name cfg env
 
-                Just kernelModule ->
-                    case Dict.get name kernelModule of
-                        Nothing ->
+                Just kernelModule -> -- extension module found
+                    case Dict.get name kernelModule of -- checks if function name is in the extension module
+                        Nothing -> -- function name not found in extension module, calls evalKernelFunction
                             evalKernelFunction moduleName name cfg env
 
-                        Just function ->
-                            PartiallyApplied
+                        Just function -> -- function name found in extension module
+                            PartiallyApplied -- calls the implementation of the function in env.functions
                                 (Environment.call moduleName name env)
                                 []
                                 function.arguments
@@ -493,37 +493,37 @@ evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
                                 |> Types.succeedPartial
 
         -- gets values from the environment stored in env.values
-        _ ->
-            case ( moduleName, Dict.get name env.values ) of
-                ( [], Just (PartiallyApplied localEnv [] [] maybeName implementation) ) ->
-                    call maybeName implementation cfg localEnv
+        _ -> -- moduleName is not Elm.Kernel._
+            case ( moduleName, Dict.get name env.values ) of -- checks if name is in env.values
+                ( [], Just (PartiallyApplied localEnv [] [] maybeName implementation) ) -> -- finds a function without moduleName
+                    call maybeName implementation cfg localEnv -- .. calls its implementation
 
-                ( [], Just value ) -> -- is in env.values
+                ( [], Just value ) -> -- finds a value without moduleName and returns it
                     Types.succeedPartial value
 
-                _ ->
+                _ -> -- moduleName is not empty or name not found in env.values
                     let
-                        fixedModuleName : ModuleName
+                        fixedModuleName : ModuleName -- cleans/complete moduleName
                         fixedModuleName =
                             fixModuleName moduleName env
 
                         maybeFunction : Maybe Expression.FunctionImplementation
-                        maybeFunction =
+                        maybeFunction = -- gets the function implementation from env.functions or Core.Basics.functions
                             let
                                 fromModule : Maybe Expression.FunctionImplementation
                                 fromModule =
                                     Dict.get fixedModuleName env.functions
                                         |> Maybe.andThen (Dict.get name)
                             in
-                            if List.isEmpty moduleName then
+                            -- if moduleName is empty ...
+                            if List.isEmpty moduleName then 
                                 case fromModule of
-                                    Just function ->
+                                    Just function -> -- ... implementation found (let .. in ???)
                                         Just function
-
-                                    Nothing ->
+                                    Nothing -> -- .. no implementation found, checks Core.Basics.functions
                                         Dict.get name Core.Basics.functions
 
-                            else
+                            else -- if moduleName is not empty, returns the implementation from env.functions
                                 fromModule
                     in
                     case maybeFunction of
@@ -533,11 +533,11 @@ evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
                                 qualifiedNameRef =
                                     { moduleName = fixedModuleName, name = name }
                             in
-                            if List.isEmpty function.arguments then
+                            if List.isEmpty function.arguments then -- if function has no arguments calls its expression
                                 call (Just qualifiedNameRef) function.expression cfg env
 
                             else
-                                PartiallyApplied
+                                PartiallyApplied -- if function has arguments, returns a PartiallyApplied Value withs its arguments
                                     (Environment.call fixedModuleName name env)
                                     []
                                     function.arguments
@@ -558,10 +558,17 @@ evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
                             in
                             -- Debug.log ("with moduleName=" ++ Debug.toString moduleName ++ " and curDatasetRef=" ++ Debug.toString maybeDatasetRef ++ " retRangeDef: " ++ Debug.toString retRangeDef) <|
                             case retRangeDef of
-                                    Ok rangeDef ->
+                                    Ok rangeDef -> -- handle swap order in call to binerayFunc application
+                                        let 
+                                            hasExternalDataset = 
+                                                if rangeDef.datasetRef /= maybeDatasetRef then
+                                                    False
+                                                else
+                                                    True
+                                        in
                                         case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
                                             (Just datasetRef, Just dataArrayRef, Just []) ->
-                                                case XModel.getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef of
+                                                case XModel.getParsedDataArrayToValue maybeXModel datasetRef dataArrayRef hasExternalDataset of
                                                     Just value ->
                                                         Types.succeedPartial value
                                                     Nothing ->
@@ -572,7 +579,7 @@ evalNonVariant moduleName name cfg env = -- evaluates a non-variant function
                                                             |> nameError env
                                                             |> Types.failPartial
                                             (Just datasetRef, Just dataArrayRef, Just dimCoordTuples) ->
-                                                case XModel.locDataArrayfromRangeDefToValue maybeXModel datasetRef dataArrayRef dimCoordTuples of
+                                                case XModel.locDataArrayfromRangeDefToValue maybeXModel datasetRef dataArrayRef dimCoordTuples hasExternalDataset of
                                                     Just value ->
                                                         Types.succeedPartial value
                                                     Nothing ->
@@ -765,6 +772,18 @@ evalNegation child cfg env =
 
                 Float f ->
                     Types.succeedPartial <| Float -f
+                DataAr ar ->
+                    let
+                        dAr = XModel.valueToDataArray (DataAr ar)
+                        hasExternalDataset =  case Dict.get "hasExternalDataset" ar of
+                            Just (Bool s) -> s
+                            _ -> False
+                        calcData = Array.map (\x -> -x) dAr.data
+                        calcDAr = { dAr | data = calcData }
+                        calcDArValue = XModel.dataArrayToValue calcDAr hasExternalDataset
+
+                    in
+                    Types.succeedPartial <| calcDArValue 
 
                 _ ->
                     Types.failPartial <| typeError env "Trying to negate a non-number"

@@ -852,7 +852,9 @@ viewModalCommon label currentValue minValue maxValue onChangeMsg confirmMsg canc
     column [ width (px 300), padding 20, centerX, centerY, Background.color white, Border.rounded 6
            , htmlAttribute (style "position" "absolute")
            , htmlAttribute (style "left" (String.fromInt (clientX+20) ++ "px"))
-           , htmlAttribute (style "top" (String.fromInt (clientY+20) ++ "px")) ]
+           , htmlAttribute (style "top" (String.fromInt (clientY+20) ++ "px")) 
+           , htmlAttribute (style "z-index" "3")
+           ]
         [ Input.slider
             [ height <| px 30
             , behindContent <|
