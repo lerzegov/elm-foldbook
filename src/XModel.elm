@@ -3,7 +3,6 @@ module XModel exposing (..)
 
 import Types exposing (Value(..))
 import FastDict as Dict exposing (Dict)
-import Platform.Cmd exposing (Cmd, none)
 import Html exposing (text)
 import Array exposing (Array)
 import Array.Extra
@@ -11,10 +10,8 @@ import List.Extra
 import XParser exposing (XValue(..))
 import TypesXModel exposing (..)
 import FormulaParser
-import Core.Basics exposing (le)
 import AppUtil
 import Html exposing (i)
-import FastDict exposing (keys)
 
 -- helper expressions and functions to check DataArray contenttype
 emptyDataArray : DataArray
@@ -265,9 +262,19 @@ valueToFloatArray value =
             Array.map (\v ->
                 case v of
                     Float s -> Just s
+                    Int i -> Just (toFloat i)
                     _ -> Nothing
             ) vals
             |> Array.Extra.filterMap identity -- This removes the Nothings, keeping only the Just values.
+        List vals ->
+            List.map (\v ->
+                case v of
+                    Float s -> Just s
+                    Int i -> Just (toFloat i)
+                    _ -> Nothing
+            ) vals
+            |> List.filterMap identity -- This removes the Nothings, keeping only the Just values.
+            |> Array.fromList
         _ -> Array.empty
 
 valueToStringArray : Value -> Array String
@@ -465,6 +472,16 @@ calcFlatIndexFast strides posVec  =
             Just <| List.foldl (\(index, stride) acc -> acc + index * stride) 0 (zip posVec strides)
     else
         Nothing
+calcDataLengthFromDims : DataArray-> Maybe Int
+calcDataLengthFromDims dataArrayWithDims =
+    Maybe.andThen
+        (\dims ->
+            let
+                sizes = Dict.map (\_ coords -> Array.length coords) dims |> Dict.values 
+            in
+            Just (List.foldl (*) 1 sizes)
+        )
+        dataArrayWithDims.localDims
 -- strides are calculate starting from the last (innernost) dimension
 -- which has stride 1; the strides for the preceding dimensions are the product
 -- of the sizes of the following dimensions

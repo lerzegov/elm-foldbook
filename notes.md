@@ -14,6 +14,9 @@ git push origin v0.2
 - CalcEngine.Input => reinit no longer triggered because was used by viewInput (elm-ui textbox)
     - trigger it in DatasetPage event on editorElement?
 
+# NICE TO HAVE
+- change XValue to interpreter Value in SpreadsheetUI
+
 # DONE
 - binary func on data arrays are order sensitive => rules for swapping dAr1 e dAr2 in calc
     - add a field Maybe Bool isExternalDataset to DataArrayValue
