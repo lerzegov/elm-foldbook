@@ -45,6 +45,7 @@ import FormulaParser
 import FastDict as Dict
 import Task
 import AppUtil exposing (cmdMsg, myLog)
+import Debug exposing (log)
 
 
 
@@ -74,6 +75,7 @@ type alias Model =
     -- , env : Result Error Types.Env -- moved to Main.elm
     , pendingExpressions : List String
     , log : String
+    , dependentDatasetRefs : List DatasetRef
     }
 
 
@@ -112,6 +114,7 @@ initialModel env datasetRef =
     , focus = Nothing
     , pendingExpressions = []
     , log = ""
+    , dependentDatasetRefs = []
     }
 -- issue: editing the input in the console causes the env to be reset to Nothing
 -- so I lose the computed values in previous evaluations
@@ -153,6 +156,7 @@ reinit model prevEnv input =
         -- calls Module.buildInitialEnv that calls values = XModel.createTestEnvValues
         , pendingExpressions = []
         , log = ""
+        , dependentDatasetRefs = []
         }
         , initEnv
         , Cmd.none )
@@ -169,6 +173,7 @@ reinit model prevEnv input =
         , focus = Nothing
         , pendingExpressions = []
         , log = ""
+        , dependentDatasetRefs = []
         }
         , Err (IncompleteCodeError "Code not executable")
         , Cmd.none
@@ -307,19 +312,29 @@ update msg model prevEnv =
                 datasetRef = model.datasetRef
                 lhsExpressions = getLhsExpressions prevEnv datasetRef |> Result.withDefault []
                 modelWithExpressions = initializeEvaluation model lhsExpressions
+                -- clear recalc flag in xModel before starting the evaluation
+                prevXModel = getXModelFromEnv prevEnv |> Maybe.withDefault XModel.emptyXModel
+                updatedDatasetsToRecalc = 
+                    List.filter (\dRef -> dRef /= datasetRef) prevXModel.datasetsToRecalc
+                        -- ++ model.dependentDatasetRefs -- moved to calcExpressionToXModel
+                updatedXModelCleared = { prevXModel | datasetsToRecalc = updatedDatasetsToRecalc }
+                clearedEnv = setXModelToEnv prevEnv updatedXModelCleared
+                startLog = "Evaluating formulas\n"
             in
+            Debug.log ("datasetsToRecalc: " ++ Debug.toString updatedDatasetsToRecalc ++ "\n ") <| -- ++ "LHS: " ++ Debug.toString lhsExpressions ) <|
             case lhsExpressions of
                 firstExpression :: restExpressions ->
                     let
                         nextMsg = EvalFormula firstExpression restExpressions
                     in
-                    (modelWithExpressions, prevEnv, Cmd.batch [Cmd.none, cmdMsg  nextMsg])
+                    ( { modelWithExpressions | log = startLog }
+                    , clearedEnv, Cmd.batch [Cmd.none, cmdMsg  nextMsg])
                 [] ->
                     (model, prevEnv, Cmd.none)
 
         EvalFormula expression remainingExpressions ->
             let
-                newLog = model.log -- ++ "Calling EvalFormula with expression: " ++ expression ++ "\n"
+                newLog = model.log ++ "EvalFormula expr: " ++ expression ++ "\n"
                             -- ++ "Remaining expressions: " ++ Debug.toString remainingExpressions ++ "\n"
                 (newModel, newEnv) = calcExpressionToXModel model.input expression model prevEnv
 
@@ -329,15 +344,12 @@ update msg model prevEnv =
                             cmdMsg (EvalFormula nextExpression rest)
                         [] ->
                             Cmd.none
-                -- disabled after moving env to Main.elm
-                -- curXModel = getXModelFromEnv prevEnv |> Maybe.withDefault XModel.emptyXModel
-                -- curXModel2 = { curXModel | datasetToRecalc  = Nothing }
-                -- newEnv = setXModelToEnv prevEnv curXModel2 
             in
             -- Debug.log ("EvalFormula: " ++ newLog)
-            ( { newModel | pendingExpressions = remainingExpressions, log = newLog}
+            ( { newModel | pendingExpressions = remainingExpressions, log = newLog, output = Ok newLog}
             , newEnv
             , Cmd.batch [Cmd.none, nextCmd] ) -- Cmd.none added as in EvalFormulas seems not to be needed
+
         UpdateFormulas  -> -- remakes env, updates formulas for dataset in xModel and env, and recalculates the dataset
             let
                 updatedFormulas = model.input
@@ -348,12 +360,14 @@ update msg model prevEnv =
                 curXModel = getXModelFromEnv newEnv |> Maybe.withDefault XModel.emptyXModel
                 curDataset = Dict.get model.datasetRef curXModel.datasets |> Maybe.withDefault XModel.emptyDataset
                 updatedDataset = { curDataset | formulas = updatedFormulas }
-                updatedXModel = { curXModel | datasets = Dict.insert model.datasetRef updatedDataset curXModel.datasets }
+                updatedXModel = { curXModel 
+                    | datasets = Dict.insert model.datasetRef updatedDataset curXModel.datasets 
+                    }
                 updatedEnv = setXModelToEnv newEnv updatedXModel
             in
             case updatedEnv of
                 Ok okEnv -> 
-                    ( model 
+                    ( {model | log = "Updating formulas " }
                     , updatedEnv
                     , cmdMsg (EvalFormulas ) )
                 Err error -> 
@@ -413,7 +427,9 @@ getEnvFunctions envModelField datasetRef =
                     funcList
                 Err _ -> Nothing
 -- used to get the dataArray for LHS expressions, without data if they are not calculated yet
-getExprDataArray : Maybe XModel -> DatasetRef -> String -> Result String DataArray
+
+type DArOrFuncName = DAr DataArray | FuncName String
+getExprDataArray : Maybe XModel -> DatasetRef -> String -> Result String DArOrFuncName
 getExprDataArray maybeXModel curDatasetRef expression = 
     case maybeXModel of
         Nothing -> Err "No XModel in getExprDataArray"
@@ -426,16 +442,17 @@ getExprDataArray maybeXModel curDatasetRef expression =
                         case (rangeDef.datasetRef, rangeDef.dataArrayRef, rangeDef.dimCoords) of
                             (Just datasetRef, Just dataArrayRef, Just []) ->
                                 case XModel.getDataArrayWithDimsFromXModel xModel datasetRef dataArrayRef of
-                                    Just parsedArray -> Ok parsedArray
+                                    Just parsedArray -> Ok (DAr parsedArray)
                                     Nothing -> "DataArray not found in getExprDataArray"  |> Err
                             (Just datasetRef, Just dataArrayRef, Just dimCoordTuples) ->
                                      case XModel.locDataArrayfromRangeDef maybeXModel datasetRef dataArrayRef dimCoordTuples of
-                                        Just parsedArray -> Ok parsedArray
+                                        Just parsedArray -> Ok (DAr parsedArray)
                                         _ -> Err "loc on DataArray failed in getExprDataArray"
                             (_, _, _) ->
                                 Err "other error in getExprDataArray from rangeNameToDef"
                     Err errMsg ->
-                        Err ("Error in getExprDataArray from rangeNameToDef: " ++ errMsg)
+                        -- Err ("Error in getExprDataArray from rangeNameToDef: " ++ errMsg)
+                        Ok (FuncName expression)
 
 
 -- to solve no recalc added envWithCoreFunctions to main.Init 
@@ -447,11 +464,12 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
 
         curDatasetRef = curModel.datasetRef
         -- get the LHS of the formula as a DataArray with data as before calc
-        exprDataArray = getExprDataArray (Just curXModel) curDatasetRef expression
+        exprDataArrayOrFunc = getExprDataArray (Just curXModel) curDatasetRef expression
         moduleFromDataset = curDatasetRef -- module name is the datasetRef, both capitalized
 
-        retModelEnv  = case exprDataArray of
-            Ok dataArray ->
+        -- handle result of getExprDataArray if it is a structured dataArray reference
+        retModelEnv  = case exprDataArrayOrFunc of
+            Ok dataArrayOrFunc ->
                 let
                     -- trigger the evaluation of the expression and get result plus logging and trace info
                     ( result, callTree, logLines ) =
@@ -474,98 +492,118 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
                         }
                     -- main calc loop
                     updatedModelEnv = 
-                        case result of -- result may wrap a structured dataArray reference
-                            -- TODO add cases for singleton results and external dataarray
-                            --      that is not currently remapped
-                            Ok (Float floatValue) ->
-                                let
-                                    expandedArray = Array.repeat (dataArray.data |> Array.length) floatValue
-                                    updatedDataArray = { dataArray | data = expandedArray }
-                                    updatedEnv = updateEnvFromDa updatedDataArray prevEnv
-                                in
-                                ({ updatedModelWithTrace | log = "Float result: " ++ Debug.toString floatValue ++ "\n" }
-                                , updatedEnv)
-                            Ok (Int intValue) ->
-                                let
-                                    floatValue = toFloat intValue
-                                    expandedArray = Array.repeat (dataArray.data |> Array.length) floatValue
-                                    updatedDataArray = { dataArray | data = expandedArray }
-                                    updatedEnv = updateEnvFromDa updatedDataArray prevEnv
-                                in
-                                ({ updatedModelWithTrace | log = "Float result: " ++ Debug.toString floatValue ++ "\n" }
-                                , updatedEnv)
-                            Ok (JsArray jsArrayValue) ->
-                                let
-                                    calculatedArray = XModel.valueToFloatArray (JsArray jsArrayValue)
+                        case dataArrayOrFunc of
+                            FuncName funcName -> -- managed non dataArray references (PROVISIONAL)
+                                case result of
+                                    Ok (List listValue) ->
+                                        let
+                                            depDSetRefs = 
+                                                if funcName == "dependentDatasetRefs" then
+                                                    XModel.valueToStrList (List listValue)
+                                                else
+                                                    []
+                                            updatedDSetsToRecalc = curXModel.datasetsToRecalc ++ depDSetRefs
+                                            updatedXModel = { curXModel | datasetsToRecalc = updatedDSetsToRecalc }
+                                            updatedEnv = setXModelToEnv prevEnv updatedXModel
+                                        in
+                                        -- Debug.log ("depDSetRefs: " ++ Debug.toString depDSetRefs) <|
+                                        ({ updatedModelWithTrace | dependentDatasetRefs = depDSetRefs }
+                                        , updatedEnv)
+                                    _ -> (updatedModelWithTrace , prevEnv)
+                            DAr dataArray ->
+                                case result of -- result may wrap a structured dataArray reference
+                                    -- TODO add cases for singleton results and external dataarray
+                                    --      that is not currently remapped
+                                    Ok (Float floatValue) ->
+                                        let
+                                            expandedArray = Array.repeat (dataArray.data |> Array.length) floatValue
+                                            updatedDataArray = { dataArray | data = expandedArray }
+                                            updatedEnv = updateEnvFromDa updatedDataArray prevEnv
+                                        in
+                                        ({ updatedModelWithTrace | log = "Float result: " ++ Debug.toString floatValue ++ "\n" }
+                                        , updatedEnv)
+                                    Ok (Int intValue) ->
+                                        let
+                                            floatValue = toFloat intValue
+                                            expandedArray = Array.repeat (dataArray.data |> Array.length) floatValue
+                                            updatedDataArray = { dataArray | data = expandedArray }
+                                            updatedEnv = updateEnvFromDa updatedDataArray prevEnv
+                                        in
+                                        ({ updatedModelWithTrace | log = "Float result: " ++ Debug.toString floatValue ++ "\n" }
+                                        , updatedEnv)
+                                    Ok (JsArray jsArrayValue) -> -- TODO how to express in formulas??
+                                        let
+                                            calculatedArray = XModel.valueToFloatArray (JsArray jsArrayValue)
 
-                                    calculatedArLen = Array.length calculatedArray |> toFloat
-                                    destArLen = XModel.calcDataLengthFromDims dataArray
-                                         |> Maybe.withDefault 0 |> toFloat
-                                    errorRetFloat = 0/0 --calculatedArLen*1000 + destArLen
-                                in
-                               -- Debug.log ("List value: " ++ Debug.toString listValue) <|
-                                if calculatedArLen /= destArLen then
-                                    let 
-                                        errorReturnDataArray = { dataArray | data = Array.repeat (Array.length dataArray.data) errorRetFloat }
-                                        updatedEnv = updateEnvFromDa errorReturnDataArray prevEnv
-                                        curLog = "Error: calculated array length " ++ (Array.length calculatedArray |> Debug.toString) ++ " differs from dataArray length " ++ (Array.length dataArray.data |> Debug.toString)
-                                    in
-                                    ({ updatedModelWithTrace | log = curLog }
-                                    , updatedEnv)
-                                else
-                                    let
-                                        updatedDataArray = { dataArray | data = calculatedArray }
-                                        updatedEnv = updateEnvFromDa updatedDataArray prevEnv
-                                    in
-                                    ({ updatedModelWithTrace | log = "JsArray updated\n" }
-                                    , updatedEnv)
-                            Ok (List listValue) ->
-                                let
-                                    calculatedArray = XModel.valueToFloatArray (List listValue)
-                                    calculatedArLen = Array.length calculatedArray |> toFloat
-                                    destArLen = XModel.calcDataLengthFromDims dataArray
-                                         |> Maybe.withDefault 0 |> toFloat
-                                    errorRetFloat = 0/0 --calculatedArLen*1000 + destArLen
-                                in
-                               -- Debug.log ("List value: " ++ Debug.toString listValue) <|
-                                if calculatedArLen /= destArLen then
-                                    let 
-                                        errorReturnDataArray = { dataArray | data = Array.repeat (Array.length dataArray.data) errorRetFloat }
-                                        updatedEnv = updateEnvFromDa errorReturnDataArray prevEnv
-                                        curLog = "Error: calculated array length " ++ (Array.length calculatedArray |> Debug.toString) ++ " differs from dataArray length " ++ (Array.length dataArray.data |> Debug.toString)
-                                    in
-                                    ({ updatedModelWithTrace | log = curLog }
-                                    , updatedEnv)
-                                else
-                                    let
-                                        updatedDataArray = { dataArray | data = calculatedArray }
-                                        updatedEnv = updateEnvFromDa updatedDataArray prevEnv
-                                    in
-                                    ({ updatedModelWithTrace | log = "JsArray updated\n" }
-                                    , updatedEnv)
-                            Ok (DataAr calcDataArValue) ->
-                                let
-                                    calculatedDAr = XModel.valueToDataArray (DataAr calcDataArValue)
-                                    -- fix the datasetRef and localDims of the calculated DataArray to the computed LHS
-                                    calculatedDArRenamed = { calculatedDAr 
-                                        | datasetRef = Just curModel.datasetRef -- dataset currently calculated
-                                        , localDims = dataArray.localDims
-                                        , localDimRefs = dataArray.localDimRefs }
-                                    updatedEnv = updateEnvFromDa calculatedDArRenamed prevEnv
-                                in
-                                ({ updatedModelWithTrace | log = "DataAr updated\n" }
-                                , updatedEnv)
-                            
-                            Ok _ ->
-                                let curLog = "Unmanaged Ok _: " ++ Debug.toString result
-                                in 
-                                ({ updatedModelWithTrace | log = curLog ++ "\nResult value is not a structured dataArray reference\n"}
-                                , prevEnv)
-                            Err error -> 
-                                ({ updatedModelWithTrace | log = curModel.log ++ "\nErr case of Result  => " ++ (Types.errorToString error)  ++ "\n" }
-                                , prevEnv)
+                                            calculatedArLen = Array.length calculatedArray |> toFloat
+                                            destArLen = XModel.calcDataLengthFromDims dataArray
+                                                |> Maybe.withDefault 0 |> toFloat
+                                            errorRetFloat = 0/0 --calculatedArLen*1000 + destArLen
+                                        in
+                                    -- Debug.log ("List value: " ++ Debug.toString listValue) <|
+                                        if calculatedArLen /= destArLen then
+                                            let 
+                                                errorReturnDataArray = { dataArray | data = Array.repeat (Array.length dataArray.data) errorRetFloat }
+                                                updatedEnv = updateEnvFromDa errorReturnDataArray prevEnv
+                                                curLog = "Error: calculated array length " ++ (Array.length calculatedArray |> Debug.toString) ++ " differs from dataArray length " ++ (Array.length dataArray.data |> Debug.toString)
+                                            in
+                                            ({ updatedModelWithTrace | log = curLog }
+                                            , updatedEnv)
+                                        else
+                                            let
+                                                updatedDataArray = { dataArray | data = calculatedArray }
+                                                updatedEnv = updateEnvFromDa updatedDataArray prevEnv
+                                            in
+                                            ({ updatedModelWithTrace | log = "JsArray updated\n" }
+                                            , updatedEnv)
+                                    Ok (List listValue) ->
+                                        let
+                                            calculatedArray = XModel.valueToFloatArray (List listValue)
+                                            calculatedArLen = Array.length calculatedArray |> toFloat
+                                            destArLen = XModel.calcDataLengthFromDims dataArray
+                                                |> Maybe.withDefault 0 |> toFloat
+                                            errorRetFloat = 0/0 --calculatedArLen*1000 + destArLen
+                                        in
+                                    -- Debug.log ("List value: " ++ Debug.toString listValue) <|
+                                        if calculatedArLen /= destArLen then
+                                            let 
+                                                errorReturnDataArray = { dataArray | data = Array.repeat (Array.length dataArray.data) errorRetFloat }
+                                                updatedEnv = updateEnvFromDa errorReturnDataArray prevEnv
+                                                curLog = "Error: calculated array length " ++ (Array.length calculatedArray |> Debug.toString) ++ " differs from dataArray length " ++ (Array.length dataArray.data |> Debug.toString)
+                                            in
+                                            ({ updatedModelWithTrace | log = curLog }
+                                            , updatedEnv)
+                                        else
+                                            let
+                                                updatedDataArray = { dataArray | data = calculatedArray }
+                                                updatedEnv = updateEnvFromDa updatedDataArray prevEnv
+                                            in
+                                            ({ updatedModelWithTrace | log = "JsArray updated\n" }
+                                                , updatedEnv)
+                                    Ok (DataAr calcDataArValue) ->
+                                        let
+                                            calculatedDAr = XModel.valueToDataArray (DataAr calcDataArValue)
+                                            -- fix the datasetRef and localDims of the calculated DataArray to the computed LHS
+                                            calculatedDArRenamed = { calculatedDAr 
+                                                | ref = dataArray.ref
+                                                , datasetRef = Just curModel.datasetRef -- dataset currently calculated
+                                                , localDims = dataArray.localDims
+                                                , localDimRefs = dataArray.localDimRefs }
+                                            updatedEnv = updateEnvFromDa calculatedDArRenamed prevEnv
+                                        in
+                                        ({ updatedModelWithTrace | log = "DataAr updated\n" }
+                                        , updatedEnv)
+                                    
+                                    Ok _ ->
+                                        let curLog = "Unmanaged Ok _: " ++ Debug.toString result
+                                        in 
+                                        ({ updatedModelWithTrace | log = curLog ++ "\nResult value is not a structured dataArray reference\n"}
+                                        , prevEnv)
+                                    Err error -> 
+                                        ({ updatedModelWithTrace | log = curModel.log ++ "\nErr case of Result  => " ++ (Types.errorToString error)  ++ "\n" }
+                                        , prevEnv)
                 in
-                
+                -- Debug.log ("Result for expression " ++ expression ++ ": " ++ Debug.toString result) <|
                 updatedModelEnv
             Err err ->
                 ({ curModel | output = Err (err ++ ", or no RangeName") }, prevEnv)
@@ -596,9 +634,10 @@ updateEnvFromDa calculatedDArRenamed prevEnv =
         updatedEnvFromDa = updateEnvFromXModel prevEnv updatedXModelFromDa
 
     in 
+    -- Debug.log ("dArRenamed.ref: " ++ Debug.toString arRef) <|
     if curXModel /=  XModel.emptyXModel || dataset /= XModel.emptyDataset then
         updatedEnvFromDa
-   else 
+    else 
        prevEnv
 
 -- returns the expression of the main function calling findMain

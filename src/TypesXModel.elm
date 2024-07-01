@@ -81,7 +81,7 @@ type alias XModel =
     , datasetRefs : List DatasetRef
     , datasets : Datasets
     , dims : Dims
-    , datasetToRecalc : Maybe DatasetRef
+    , datasetsToRecalc : List DatasetRef
     }
 
 -- usable by loc iloc

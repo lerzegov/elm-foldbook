@@ -26,6 +26,9 @@ ce__valore_ebit = ce__valore_ebitda - ce__valore_amm
 taxRate = 0.3
 ce__valore_tax = ce__valore_ebit * taxRate
 ce__valore_unlevNetIncome = ce__valore_ebit - ce__valore_tax
+myList = [1,2,3,4,5]
+myArray = Array.fromList myList
+myJsArray = JsArray.fromList myList
 
 
 """

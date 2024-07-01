@@ -7,6 +7,15 @@ import FormatNumber.Locales exposing (Decimals(..), Locale, System(..), frenchLo
 import Task exposing (Task)
 import Time exposing (Posix, posixToMillis, now)
 import Debug
+import Process
+
+debounce : Float -> msg -> Cmd msg
+debounce delay message =
+    Process.sleep delay
+        |> Task.perform (always message)
+
+
+
 
 myLog : String -> a -> a
 myLog message value =

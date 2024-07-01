@@ -50,7 +50,7 @@ import Editable exposing (Editable(..))
 
 import Array exposing (Array)
 import Array2D exposing (Array2D)
-import Array.Extra
+
 
 
 -- XModel
@@ -62,6 +62,8 @@ import String.Conversions exposing (fromBool)
 import Element.Font as Font
 import Html exposing (col)
 import XModel exposing (isDataArrayText)
+import Time exposing (Posix)
+
 
 
 -- Types
@@ -181,6 +183,7 @@ type Msg
     | CancelRowHeightChange
     | CtrlPressed Bool
     | BackspacePressed
+    | DebouncedFocus String
 
 
 subscriptions : Model -> Sub Msg
@@ -327,7 +330,7 @@ update msg model xModel=
                     curDatasetName = model.curDataset.ref
                     updatedXModel = { xModel 
                                     | datasets = XModel.insertDataset curDatasetName updatedDataset xModel.datasets
-                                    , datasetToRecalc = Just curDatasetName
+                                    , datasetsToRecalc = xModel.datasetsToRecalc ++ [curDatasetName]
                                     }
                     updatedSpreadsheet =
                         XView.generateSpreadsheetAndIndexFromView xModel.dims updatedDataset model.curDatasetView |> Tuple.first
@@ -343,10 +346,11 @@ update msg model xModel=
                         , cellsUI = (updateCellsUI updatedCellsUI updatedSpreadsheet)
                         , spreadsheet = updatedSpreadsheet
                         , escPressed = False
+                        , selectedCellUI = Just (rowIndex, colIndex)
                         }
                 in
                 -- Debug.log ("Updated dataset: " ++ Debug.toString(updatedDataset))
-                ( newModel, updatedXModel, focusCommand (getCellId rowIndex colIndex) )
+                ( newModel, updatedXModel, Cmd.none)
 
         CellValueChange rowIndex colIndex newValue ->
             let
@@ -376,17 +380,20 @@ update msg model xModel=
                     XView.generateSpreadsheetAndIndexFromView xModel.dims updatedDataset model.curDatasetView |> Tuple.first
                 updatedCellsUI = -- only with UI settings
                     updateCellsUI model.cellsUI updatedSpreadsheet
+                cellToFocus = 
+                    let coordTuple = Maybe.withDefault (0, 0) model.selectedCellUI in
+                    getCellId (Tuple.first coordTuple) (Tuple.second coordTuple)
             in
             ( { model 
                 | curDataset = updatedDataset
-                --, table = updatedTable
                 , cellsUI = updatedCellsUI
                 , spreadsheet = updatedSpreadsheet
+                , escPressed = False
                 }
             , updatedXModel
-            --, Cmd.none)
-            -- PROVVI focusCommand (getCellId 0 0) must pass current row and col index
-            ,   focusCommand (getCellId 1 1) -- non funziona
+            , focusCommand cellToFocus 
+            --, AppUtil.debounce 20 (DebouncedFocus cellToFocus)-- consigliato da chatGpt, non funziona 
+            --, Cmd.none
             )
         FocusResult result ->
             case result of
@@ -528,6 +535,8 @@ update msg model xModel=
             ({ model | ctrlPressed = isPressed }, xModel, Cmd.none)
         BackspacePressed ->
             (model, xModel, Cmd.none)
+        DebouncedFocus elementId ->
+            (model, xModel, focusCommand elementId)
 
 
 updateSpreadsheetFromXModel : Model -> XModel -> Dataset-> Model

@@ -15,8 +15,7 @@ import Eval.Module as Module
 import XModel
 import TypesXModel exposing (..)
 import FastDict as Dict exposing (Dict)
-import Time
-import Task
+import AppUtil exposing (cmdMsg)
 
 
 type alias Model =
@@ -32,7 +31,6 @@ type Msg
     | HomeMsg Home.Msg
     | DatasetMsg String DatasetPage.Msg
     | EnvUpdated (Result Error Env)
-    | OpenDatasetInNewTab String
 
 init : () -> Url -> Navigation.Key -> (Model, Cmd Msg)
 init _ url key =
@@ -96,25 +94,25 @@ update msg model =
                         Nothing ->
                             DatasetPage.init model.env datasetName
             in
-            -- esegue EvalFormulas senza errori non aggiorna lo spreadsheet
-            -- Debug.log ("DatasetMsg for " ++ datasetName ++ Debug.toString datasetMsg) 
+
             ( 
             { model 
             | env = newEnv 
             , datasetModels = Dict.insert datasetName newDatasetModel model.datasetModels 
             }
-            , Cmd.map (DatasetMsg datasetName) datasetCmd
+            , Cmd.batch 
+                [ Cmd.map (DatasetMsg datasetName) datasetCmd
+                -- , Cmd.map (DatasetMsg datasetName) 
+                --     (cmdMsg (DatasetPage.UpdateCodeMirror newDatasetModel.calcModel.input))
+                ]
             )
 
         EnvUpdated newEnv ->
             ( { model | env = newEnv }
             , Cmd.none
             )
-        OpenDatasetInNewTab datasetName ->
-            let
-                url = "/#/dataset/" ++ datasetName
-            in
-            (model, Ports.openNewTab url)
+
+
 
 view : Model -> Browser.Document Msg
 view model =
@@ -140,7 +138,9 @@ view model =
                     case Dict.get datasetName model.datasetModels of
                         Just datasetModel ->
                             Element.layout [] 
-                                (Element.map (DatasetMsg datasetName) (DatasetPage.view model.env datasetModel))
+                                (Element.map (DatasetMsg datasetName) 
+                                 (DatasetPage.view model.key model.env datasetModel )
+                                )
                             
                         Nothing ->
                             Html.div [] [ Html.text ("Dataset page " ++ datasetName ++ " not found") ]

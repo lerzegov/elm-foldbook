@@ -34,11 +34,12 @@ emptyDataset = { ref = ""
                 , dataArrayRefs = []
                 , dataArrays = Dict.empty
                 , formulas = ""
-                , defaultDataArrayRef = Nothing}
+                , defaultDataArrayRef = Nothing
+                }
 
 emptyXModel : XModel
 emptyXModel = { modelRef = "", datasetRefs = [], datasets = Dict.empty, dims = Dict.empty
-              , datasetToRecalc = Nothing}
+              , datasetsToRecalc = [] }
 
 -- === XModel helper functions to add or modify arrays and datasets ===
 
@@ -2184,7 +2185,7 @@ rangeNameToDef xModel curDatasetRef rangeName = -- rangeName without trailing "_
        , isExplicitDataArrayRef = isExplDaRef }
 
 -- used in codemirror to parse the range name being entered and propose the next possible tokens
-promptCoordsForPartialRangeName : XModel -> DatasetRef -> String -> List String
+promptCoordsForPartialRangeName : XModel -> DatasetRef -> String -> List { label : String }
 promptCoordsForPartialRangeName xModel curDatasetRef partialName = 
     let
         --  text after the last "_"
@@ -2264,7 +2265,7 @@ promptCoordsForPartialRangeName xModel curDatasetRef partialName =
                     List.map Tuple.second sortedCompositeKeys
             in
             sortedCoords
-        prompts = List.map (\r -> prependedRangeName ++  r) (availableCoords searchDict lastToken)
+        prompts = List.map (\r -> { label = prependedRangeName ++  r }) (availableCoords searchDict lastToken)
     in
     prompts  -- [partialName, prependedRangeName , lastToken ]  [Debug.toString searchDict] --
 
@@ -2364,11 +2365,9 @@ mySub : Float -> Float -> Float -- parsing does not catch declaration errors
 mySub val1 val2 = val1 - val2 -- errors are raised in range parsing
 taxRate : Float -- declaring aconstant expr is not needed, no longer parsing errors
 taxRate = 0.4
--- to recalc with modified formulas clic Update formulas
-costoVen = ce__valore_ricavi * 0.48 -- uses expansion of rangeName from getExprDataArray
 -- mapping between datasets thanks to order swap in evalNonVariant before 
 -- executing Kernel.twoNumbers when a binary func is applied
--- costoVen = macro__cambioUsdEur_base * ricavi 
+costoVen = ce__valore_ricavi * 0.48 * macro__cambioUsdEur_base -- uses expansion of rangeName from getExprDataArray
 ce__valore_margContrib = mySub ce__valore_ricavi ce__valore_costoVen
 ce__valore_ebitda = ce__valore_margContrib - ce__valore_speseVGA
 ce__valore_ebit = ce__valore_ebitda - ce__valore_amm 
@@ -2383,6 +2382,7 @@ macroFormulas = """module Macro exposing (..)
 macro__inflazione_forecast = macro__inflazione_base * 1.02
 macro__cambioUsdEur_forecast = macro__cambioUsdEur_base * 3.07
 macro__cambioCalc = macro__cambioUsdEur * 5 -- calc on dataArrays not yet implemented
+dependentDatasetRefs = ["Ce"]
 
 """
 
@@ -2580,7 +2580,7 @@ myXModel = { modelRef = "finPlan"
            , datasetRefs = [ce, az, macro]
            , datasets = myDatasets
            , dims = myDims -- arrays are hyerarchicallly stored in datasets
-           , datasetToRecalc = Nothing
+           , datasetsToRecalc = []
            }
 
 
