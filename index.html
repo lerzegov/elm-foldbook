@@ -19,6 +19,7 @@
 <script src="./dist/ui.js"></script>
 <script src="./dist/codemirror-bundle.js"></script>
 <script>
+// old css stuff can be removed?
 // container for all the editors
 
 // used on dataset change
@@ -33,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.addEventListener('contentChanged', function(event) {
                 app.ports.editorContentChanged.send(event.detail);
             });
-
+            // custom element defined in codemirror-bundle.js, see /codemirror6-foldbook/../codemirror.mts
             var curEditor = document.querySelector("code-mirror-editor")
             if (curEditor) {
                 curEditor.setAppInstance(app);
@@ -49,11 +50,21 @@ document.addEventListener('DOMContentLoaded', function () {
         // Handle the openNewTab port
         app.ports.openNewTab.subscribe(function(url) {
             window.open(url, '_blank');
+        // spreadsheetUI editing support
+        });
+        app.ports.focusAndSelect.subscribe(function(cellId) {
+            setTimeout(function() {
+                var inputElement = document.getElementById(cellId);
+                console.log(inputElement);
+                if (inputElement) {
+                    inputElement.focus();
+                    inputElement.select();
+                }
+            }, 100); // Delay to ensure input is rendered
+        });
 });
 
 
-                
-});
 
 </script>
 </body>

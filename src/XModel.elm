@@ -15,7 +15,10 @@ import Html exposing (i)
 
 -- helper expressions and functions to check DataArray contenttype
 emptyDataArray : DataArray
-emptyDataArray = { ref = "", datasetRef = Nothing, data = Array.empty, text = Array.empty, localDims = Nothing, localDimRefs = Nothing}
+emptyDataArray = { ref = "", datasetRef = Nothing, data = Array.empty, text = Array.empty
+                 , localDims = Nothing, localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
+                 }
 isDataArrayText : DataArray -> Bool
 isDataArrayText dataArray =
     Array.isEmpty dataArray.data && not (Array.isEmpty dataArray.text)
@@ -342,8 +345,9 @@ valueToDataArray value =
                 localDimRefs = case Dict.get "localDimRefs" dict of
                     Just val -> Just (valueToStrList val)
                     _ -> Nothing
+                -- pointeFormulas not handled
             in
-            DataArray ref datasetRef data text localDims localDimRefs
+            DataArray ref datasetRef data text localDims localDimRefs Dict.empty -- PROVVI
         _ ->
             --DataArray "" Nothing Array.empty Array.empty Nothing Nothing
             emptyDataArray
@@ -2354,6 +2358,7 @@ ceDataArrays = Dict.fromList
                  , text = Array.empty
                  , localDims = Nothing
                  , localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
                  })
     ]
 ceFormulas : ModuleSource
@@ -2451,6 +2456,7 @@ azDataArrays = Dict.fromList
                  , text = nomeArray
                  , localDims = Nothing
                  , localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
                  })
     , (settore, { ref = settore
                 , datasetRef = Just az
@@ -2458,6 +2464,7 @@ azDataArrays = Dict.fromList
                  , text = settoreArray
                  , localDims = Nothing
                  , localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
                  })
     , (nrDip, { ref = nrDip
                  , datasetRef = Just az
@@ -2465,6 +2472,7 @@ azDataArrays = Dict.fromList
                  , text = Array.empty
                  , localDims = Nothing
                  , localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
                  })
     ]
 -- == macro Dataset ==
@@ -2505,6 +2513,7 @@ macroDataArrays = Dict.fromList
                  , text = Array.empty
                  , localDims = Nothing
                  , localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
                  })
     , (cambioUsdEur, { ref = cambioUsdEur
                  , datasetRef = Just macro
@@ -2512,6 +2521,7 @@ macroDataArrays = Dict.fromList
                  , text = Array.empty
                  , localDims = Nothing
                  , localDimRefs = Nothing
+                 , pointedFormulas = Dict.empty
                  })
     , (cambioCalc, { ref = cambioCalc
                     , datasetRef = Just macro
@@ -2519,6 +2529,7 @@ macroDataArrays = Dict.fromList
                     , text = Array.empty
                     , localDims = Nothing
                     , localDimRefs = Nothing
+                    , pointedFormulas = Dict.empty
                     })
     ]
 -- === Greche dataset to test duplicate coord names ===
@@ -2568,6 +2579,7 @@ myDatasets = Dict.fromList
                         , text = caratteriGreciArrayText
                         , localDims = Nothing
                         , localDimRefs = Nothing
+                        , pointedFormulas = Dict.empty
                         })
                     ]
                 , formulas = ""

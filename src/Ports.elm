@@ -21,4 +21,7 @@ port requestHints : ({ editorId : String, word : String } -> msg) -> Sub msg
 -- port initializeEditor : { editorId : String, initialValue : String } -> Cmd msg
 port editorContentChanged : (String -> msg) -> Sub msg -- sub to javascript
 
+-- spreadsheetUI editing
+port focusAndSelect : String -> Cmd msg
+
 

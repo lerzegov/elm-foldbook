@@ -16,6 +16,8 @@ import XModel
 import TypesXModel exposing (..)
 import FastDict as Dict exposing (Dict)
 import AppUtil exposing (cmdMsg)
+import CalcEngine exposing (getXModelFromEnv, Msg(..))
+import Html.Attributes exposing (default)
 
 
 type alias Model =
@@ -24,19 +26,22 @@ type alias Model =
     , homeModel : Home.Model
     , datasetModels : Dict String DatasetPage.Model
     , key : Navigation.Key
+    , counter : Int
     }
 
 type Msg
     = UrlChanged Url
     | HomeMsg Home.Msg
     | DatasetMsg String DatasetPage.Msg
-    | EnvUpdated (Result Error Env)
+    | EnvUpdated
+
 
 init : () -> Url -> Navigation.Key -> (Model, Cmd Msg)
 init _ url key =
     let
         startEnv = Module.emptyEnvWithCoreFunctions
-        startXModel = XModel.myXModel
+        defaultXModel = XModel.myXModel
+        startXModel = { defaultXModel | datasetsToRecalc = ["Az", "Macro", "Ce"] }
         startEnvWithXModel = { startEnv | envXModel = Just startXModel }
         startDSets = startXModel.datasets |> Dict.values
         startEnvWithFormulas = 
@@ -48,7 +53,7 @@ init _ url key =
         maybeInitialEnv = startEnvWithFormulas
         initialEnv =
             case maybeInitialEnv of
-                Just env -> Ok env
+                Just env -> Ok { env | msgLine = "init" }
                 Nothing -> Err (IncompleteCodeError "Failed to initialize environment")
         initDatasetPages = List.foldl (\dSet dPageAcc ->
             let 
@@ -63,10 +68,11 @@ init _ url key =
             , homeModel = Home.init maybeInitialEnv
             , datasetModels = initDatasetPages
             , key = key
+            , counter = 0
             }
     in
     -- Debug.log "called Main.init" <| called also on new tab open but once
-    (initialModel, Cmd.none)
+    (initialModel, cmdMsg EnvUpdated) -- trigger initial recalc
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -93,24 +99,101 @@ update msg model =
 
                         Nothing ->
                             DatasetPage.init model.env datasetName
+                (envCmd, envWithrecalcMsgLine) = 
+                    case newEnv of
+                        Ok envOk ->
+                            if hasEnvToRecalculate model.env then
+                                -- Trigger EnvUpdated action
+                                (cmdMsg EnvUpdated
+                                , Ok {envOk | msgLine = envOk.msgLine ++ " - Env to recalculate for " ++ datasetName ++ " dataset"}
+                                )
+                            else
+                                (Cmd.none, Ok envOk) --"No env to recalculate for " ++ datasetName ++ " dataset")
+                        Err _ ->
+                            (Cmd.none, addMsgLine "err Env" newEnv)
+                combinedCmds =
+                    Cmd.batch ([Cmd.map (DatasetMsg datasetName) datasetCmd] ++ [envCmd])
+                
             in
-
             ( 
             { model 
-            | env = newEnv 
+            | env = envWithrecalcMsgLine
             , datasetModels = Dict.insert datasetName newDatasetModel model.datasetModels 
             }
-            , Cmd.batch 
-                [ Cmd.map (DatasetMsg datasetName) datasetCmd
-                -- , Cmd.map (DatasetMsg datasetName) 
-                --     (cmdMsg (DatasetPage.UpdateCodeMirror newDatasetModel.calcModel.input))
-                ]
+            , combinedCmds
             )
 
-        EnvUpdated newEnv ->
-            ( { model | env = newEnv }
-            , Cmd.none
+        EnvUpdated -> -- triggered by parent dataset modification or update formulas
+        -- not triggered by child dataset modification (e.g. Ce SaveCell)
+            let
+                curXModel = getXModelFromEnv model.env |> Maybe.withDefault XModel.emptyXModel
+                datasetsToRecalc = curXModel.datasetsToRecalc
+                (recalculatedDSetModels, recalculatedEnv, recalcCmds) =
+                    List.foldl (\dSetRef (newDSetModels, newEnv, newCmds) -> 
+                        case Dict.get dSetRef newDSetModels of
+                            Just dSetModel ->
+                                let 
+                                    (recalcDSetModel, recalcEnv, recalcCmd) = recalculateDataset dSetModel newEnv
+                                in
+                                (Dict.insert dSetRef recalcDSetModel newDSetModels, recalcEnv, newCmds ++ [recalcCmd])
+                            Nothing ->
+                                (newDSetModels, newEnv, newCmds)
+                        ) (model.datasetModels, model.env, []) datasetsToRecalc
+                currentCounter = model.counter +1
+                newMsgLine =  " - EnvUpdated nr " ++ String.fromInt currentCounter  ++ " for " ++ Debug.toString datasetsToRecalc ++ " datasets"
+            in
+            ( { model 
+                | env = addMsgLine newMsgLine recalculatedEnv
+                , datasetModels = recalculatedDSetModels
+                , counter = currentCounter
+              }
+            , Cmd.batch recalcCmds
             )
+addMsgLine : String -> Result Error Env -> Result Error Env
+addMsgLine msg env =
+    case env of
+        Ok envOk ->
+            Ok {envOk | msgLine = envOk.msgLine ++ " - " ++ msg}
+        Err _ ->
+            env
+getMsgLine : Result Error Env -> String
+getMsgLine env =
+    case env of
+        Ok envOk -> envOk.msgLine
+        Err _ -> "No msgLine for Err Env"
+hasEnvToRecalculate : Result Error Env -> Bool
+hasEnvToRecalculate env =
+    let maybeXModel = getXModelFromEnv env in
+    case maybeXModel of
+            Just xModel ->
+                List.length xModel.datasetsToRecalc > 0
+            Nothing ->
+                False
+
+
+-- helper function to recalc changed datasets
+recalculateDataset : DatasetPage.Model -> Result Error Env -> (DatasetPage.Model, Result Error Env, Cmd Msg)
+recalculateDataset datasetModel env  =
+    let
+        curCalcModel = datasetModel.calcModel
+        datasetRef = curCalcModel.datasetRef
+        (finalCalcModel, finalEnv, finalCmd) =
+            case env of
+                Ok validEnv ->
+                    let 
+                        (newCalcModel, newEnv, newCmd) = CalcEngine.update EvalFormulas curCalcModel (Ok validEnv)
+                        remappedNewCmd = Cmd.map DatasetPage.CalcMsg newCmd
+                        remappedNewCmd2 = Cmd.map (DatasetMsg datasetRef) remappedNewCmd
+                    in
+                    (newCalcModel, newEnv, remappedNewCmd2)
+                Err _ ->
+                    (curCalcModel, env, Cmd.none)
+        finalDatasetModel = { datasetModel 
+                    | calcModel = finalCalcModel 
+                    }   
+    in
+            (finalDatasetModel, finalEnv, finalCmd)
+
 
 
 
@@ -119,7 +202,7 @@ view model =
     let
         title =
             let
-                modelRef = getModelRefFromEnv model.env
+                modelRef = getXModelRefFromEnv model.env
             in
             case model.page of
                 HomePage ->
@@ -131,34 +214,39 @@ view model =
         bodyContent =
             case model.page of
                 HomePage ->
-                    Element.layout [] 
                         (Element.map HomeMsg (Home.view model.homeModel))
 
-                DatasetPage  datasetName ->
+                DatasetPage datasetName ->
                     case Dict.get datasetName model.datasetModels of
                         Just datasetModel ->
-                            Element.layout [] 
-                                (Element.map (DatasetMsg datasetName) 
-                                 (DatasetPage.view model.key model.env datasetModel )
-                                )
+                            column [] 
+                                [ msgLine model 
+                                , Element.map (DatasetMsg datasetName) 
+                                    (DatasetPage.view model.key model.env datasetModel)
+                                
+                                ]
                             
                         Nothing ->
-                            Html.div [] [ Html.text ("Dataset page " ++ datasetName ++ " not found") ]
+                            el [] (Element.text ("Dataset page " ++ datasetName ++ " not found") )
+
     in
     { title = title
-    , body = [ bodyContent ]
+    , body = [ ( Element.layout [] bodyContent)
+             ]
     }
 
-getModelRefFromEnv : Result Error Types.Env -> String 
-getModelRefFromEnv env  =
+msgLine : Model -> Element Msg
+msgLine model =
+    Element.paragraph [] [(Element.text ("\n" ++ getMsgLine model.env ++ "\n"))]
+
+getXModelRefFromEnv : Result Error Types.Env -> String 
+getXModelRefFromEnv env  =
     case env of
         Ok envOk ->
             case envOk.envXModel of
                 Just xModel -> xModel.modelRef
                 Nothing -> "No modelRef"
         Err _ -> "No env for modelRef"
-
-
 
 subscriptions : Model -> Sub Msg
 subscriptions model =

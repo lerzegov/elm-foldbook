@@ -63,6 +63,7 @@ import Element.Font as Font
 import Html exposing (col)
 import XModel exposing (isDataArrayText)
 import Time exposing (Posix)
+import Ports exposing (focusAndSelect)
 
 
 
@@ -302,7 +303,7 @@ update msg model xModel=
                         Nothing ->
                             ""
                 editableValue =
-                            if cellText /= "" then
+                            if cellText /= "" && newChar == "" then
                                 Editable.edit (Editable cellText cellText)
                             else -- char keypress to edit, only pressed char
                             if newChar /= "" then
@@ -312,11 +313,14 @@ update msg model xModel=
                 updatedCells =
                     updateCellUI rowIndex colIndex (\cellUIarg -> 
                         { cellUIarg | value = editableValue, isEditing = True }) model.cellsUI
+                cellId = getCellId rowIndex colIndex
+                --focusCmd = focusAndSelect cellId -- per selezionare contenuto
+                focusCmd = focusCommand (getCellId rowIndex colIndex) 
             in
             -- ( { model | cells = updatedCells, editingValue = Just initialEditingValue }
             ( { model | cellsUI = updatedCells, escPressed = False }
             , xModel
-            , focusCommand (getCellId rowIndex colIndex) )
+            , focusCmd )  
 
 
         SaveCell rowIndex colIndex newCellValue ->

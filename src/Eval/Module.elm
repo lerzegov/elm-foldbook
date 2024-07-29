@@ -14,16 +14,18 @@ import Elm.Syntax.Node as Node exposing (Node(..))
 -- NB Env is in Types.elm, Environment has functions to add functions and values to the environment
 import Environment 
 import Eval.Expression
-import FastDict as Dict
+import FastDict as Dict exposing (Dict)
 import List.Extra
 import Result.MyExtra
 import Rope exposing (Rope)
 import Syntax exposing (fakeNode)
-import Types exposing (CallTree, Env, Error(..), Value(..))
+import Types exposing (CallTree, Env, Error(..), Value(..), FormulaModuleInfo)
 import Value exposing (unsupported)
 -- used to call createTestEnvValues
 import TypesXModel exposing (XModel)
 import XModel exposing (myXModel)
+import Types exposing (FormulaFunctionInfo, RecalcState(..))
+
 
 
 
@@ -243,12 +245,13 @@ buildInitialEnv curEnv file =
                 -- here func from my modules put in codegen/Elm are added to Core.functions
                 --      e.g. Financial.elm, FuncDataArray.elm that duplicates the same module compiled in this app
                 , functions = Core.functions
-                , functionCalcOrders = Dict.empty
+                , functionsInFormulas = Dict.empty
                 -- values can be of any type variant included in Value (see Types.elm)
                 -- here I add some test values to the environment
                 -- NB: the values can be used by the interpreter, even if they are not declared in the source code!
                 , values = XModel.createTestEnvValues
                 , envXModel = Nothing
+                , msgLine = ""
                 }
 
 
@@ -261,7 +264,7 @@ buildInitialEnv curEnv file =
                             function.declaration
                         funcName = getFuncName function.declaration
                         env1 = Environment.addFunction moduleName implementation env
-                        env2 = Environment.addFunctionCalcOrder moduleName funcName env1
+                        env2 = Environment.addFunctionInFormulas moduleName funcName env1
                     in
                     -- Debug.log (Debug.toString moduleName ++ Debug.toString funcName)
                     Ok env2
@@ -293,9 +296,10 @@ emptyEnv =
     { currentModule = []
     , callStack = []
     , functions = Dict.empty
-    , functionCalcOrders = Dict.empty
+    , functionsInFormulas = Dict.empty
     , values = Dict.empty
     , envXModel = Nothing
+    , msgLine = ""
     }
 
 emptyEnvWithCoreFunctions : Env
@@ -303,9 +307,10 @@ emptyEnvWithCoreFunctions =
     { currentModule = []
     , callStack = []
     , functions = Core.functions
-    , functionCalcOrders = Dict.empty
+    , functionsInFormulas = Dict.empty
     , values = Dict.empty
     , envXModel = Nothing
+    , msgLine = ""
     }
 
 

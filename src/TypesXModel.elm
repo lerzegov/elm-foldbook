@@ -59,6 +59,7 @@ type alias DataArray =
     , text : Array String
     , localDims : Maybe Dims -- local dims for the DataArray
     , localDimRefs : Maybe (List DimRef) -- local dimRefs for the DataArray
+    , pointedFormulas : Dict FlatIndex String -- formulas pointed by the DataArray
     }
 
 -- final store of array data

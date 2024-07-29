@@ -1,16 +1,21 @@
 module Types exposing (CallTree(..), Config, Env, EnvValues, Error(..), Eval, EvalErrorData, EvalErrorKind(..), EvalResult
-    , PartialEval, PartialResult, Value(..))
+    , PartialEval, PartialResult, Value(..)
+    , FormulaModuleInfo, FormulaFunctionInfo
+    , emptyModuleInfo, emptyFunctionInfo, emptyFunctionImplementation, RecalcState(..))
 
 import Array exposing (Array)
 import Elm.Syntax.Expression exposing (Expression, FunctionImplementation)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node exposing (Node)
 import Elm.Syntax.Pattern exposing (Pattern, QualifiedNameRef)
-import FastDict exposing (Dict)
+import FastDict as Dict exposing (Dict)
 import Parser exposing (DeadEnd)
 import Recursion exposing (Rec)
 import Rope exposing (Rope)
 import TypesXModel exposing (XModel)
+import Syntax exposing (fakeNode)
+import Elm.Syntax.Expression as Expression
+
 
 
 
@@ -87,13 +92,46 @@ type Value
 
 type alias Env =
     { currentModule : ModuleName
-    , functions : Dict ModuleName (Dict String FunctionImplementation)
-    , functionCalcOrders : Dict ModuleName (List String)
+    -- XModel formulas are stored here with moduleName=[datasetRef], other modules are system functions
+    , functions : Dict ModuleName (Dict String FunctionImplementation) 
+    -- keys only for modules mapped to datasets, fields are additional settings used only by XModel formulas
+    , functionsInFormulas : Dict ModuleName FormulaModuleInfo
     , values : EnvValues 
     , envXModel : Maybe XModel --added by Luca
     , callStack : List QualifiedNameRef
+    , msgLine : String
     }
 
+type alias FormulaModuleInfo =
+    { functionDict : Dict String FormulaFunctionInfo
+    , functionCalcOrder : List String
+    }
+
+type alias FormulaFunctionInfo =
+    { calcOrder : Int
+    , recalcState : RecalcState
+    }
+emptyModuleInfo : FormulaModuleInfo
+emptyModuleInfo =
+    { functionDict = Dict.empty
+    , functionCalcOrder = []
+    }
+
+emptyFunctionInfo : FormulaFunctionInfo
+emptyFunctionInfo =
+    { calcOrder = 0
+    , recalcState = RecalcNeeded
+    }
+
+emptyFunctionImplementation : FunctionImplementation
+emptyFunctionImplementation =
+    { name = fakeNode ""
+    , arguments = []
+    , expression = fakeNode Expression.UnitExpr
+    }
+
+
+type RecalcState = RecalcNeeded | RecalcDone
 
 type alias EnvValues =
     Dict String Value

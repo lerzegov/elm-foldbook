@@ -91,8 +91,9 @@ decimalSeparator = "."
 
 thousandsSeparator : String
 thousandsSeparator = ","
--- per non fare casino con formato standare float uso US locale
+-- per non fare casino con formato standard float uso US locale
 -- tenere allineato con CellParserExcel.parseWithFormattedFloat
+myLocale : Locale
 myLocale = { decimals = Exact 1, system = Western, thousandSeparator = thousandsSeparator, decimalSeparator = decimalSeparator, negativePrefix = "−", negativeSuffix = "", positivePrefix = "", positiveSuffix = "", zeroPrefix = "", zeroSuffix = "" }
 
 formatFloat : Float  -> String

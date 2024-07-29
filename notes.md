@@ -1,7 +1,7 @@
 # Notes
 ## create repo version
-git tag -a v0.2 -m "Version 0.2"
-git push origin v0.2
+git tag -a v0.3 -m "Version 0.3"
+git push origin v0.3
 
 
 # TODO

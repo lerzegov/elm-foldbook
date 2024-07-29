@@ -132,19 +132,21 @@ initEnv : Env
 initEnv =
     { currentModule = mdName
     , functions = initFunctions
-    , functionCalcOrders = Dict.empty
+    , functionsInFormulas = Dict.empty
     , values = initValues
     , callStack = []
     , envXModel = Just XModel.myXModel
+    , msgLine = ""
     }
 emptyEnv : Env
 emptyEnv =
     { currentModule = []
     , functions = Dict.empty
-    , functionCalcOrders = Dict.empty
+    , functionsInFormulas = Dict.empty
     , values = Dict.empty
     , callStack = []
     , envXModel = Just XModel.emptyXModel
+    , msgLine = ""
     }
 myEnv : Result Error Env
 myEnv = makeEnv initEnvSource (Just initEnv) 

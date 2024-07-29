@@ -28,7 +28,6 @@ import Eval.Types as Types
 import Expression.Extra
 import Hex
 import Html
-import Html.Attributes as HtmlAttr
 import Json.Encode
 import List.Extra
 import Rope
@@ -36,16 +35,17 @@ import Types exposing (CallTree(..), Error(..), Value(..), Env, Eval)
 import UI.Source as Source
 import UI.Theme as Theme
 import Value
-import FastDict
+import FastDict as Dict exposing (Dict)
 import Array exposing (Array)
 import TypesXModel exposing (..)
 import XModel
 import List exposing (partition)
-import FormulaParser
-import FastDict as Dict
-import Task
+import FastDict as Dict exposing (Dict)
 import AppUtil exposing (cmdMsg, myLog)
 import Debug exposing (log)
+import Array exposing (get)
+import Core.Basics exposing (le)
+import Maybe.Extra exposing (prev)
 
 
 
@@ -62,7 +62,7 @@ type Msg
     | NoOp
 
 
-type alias Model =
+type alias Model = -- data for calculation process
     { datasetRef : DatasetRef
     , input : String -- code in the console
     , parsed : Maybe (Node Expression.Expression)
@@ -129,7 +129,7 @@ reinit model prevEnv input =
                 Err _ -> Nothing
             initSource = input
             initParsed = Nothing -- tryParse initSource -- disabled not relevant
-            initEnv = Module.makeEnv initSource curEnv
+            initEnv = makeCalcEnv initSource curEnv
             (initOutput, initDatasetRef)  = case initEnv of
                 Ok env -> (Ok ("Reinit model, parsed = " ++ Debug.toString initParsed)
                                 , env.currentModule |> List.head |> Maybe.withDefault ""
@@ -312,16 +312,15 @@ update msg model prevEnv =
                 datasetRef = model.datasetRef
                 lhsExpressions = getLhsExpressions prevEnv datasetRef |> Result.withDefault []
                 modelWithExpressions = initializeEvaluation model lhsExpressions
-                -- clear recalc flag in xModel before starting the evaluation
                 prevXModel = getXModelFromEnv prevEnv |> Maybe.withDefault XModel.emptyXModel
-                updatedDatasetsToRecalc = 
+                updatedDatasetsToRecalc = -- clear recalc flag in xModel before starting the evaluation
                     List.filter (\dRef -> dRef /= datasetRef) prevXModel.datasetsToRecalc
                         -- ++ model.dependentDatasetRefs -- moved to calcExpressionToXModel
                 updatedXModelCleared = { prevXModel | datasetsToRecalc = updatedDatasetsToRecalc }
                 clearedEnv = setXModelToEnv prevEnv updatedXModelCleared
                 startLog = "Evaluating formulas\n"
             in
-            Debug.log ("datasetsToRecalc: " ++ Debug.toString updatedDatasetsToRecalc ++ "\n ") <| -- ++ "LHS: " ++ Debug.toString lhsExpressions ) <|
+            -- Debug.log ("datasetsToRecalc: " ++ Debug.toString updatedDatasetsToRecalc ++ "\n ") <| -- ++ "LHS: " ++ Debug.toString lhsExpressions ) <|
             case lhsExpressions of
                 firstExpression :: restExpressions ->
                     let
@@ -355,7 +354,7 @@ update msg model prevEnv =
                 updatedFormulas = model.input
                 newEnv = case prevEnv of
                     Ok env -> 
-                        Module.makeEnv updatedFormulas (Just env)
+                        makeCalcEnv updatedFormulas (Just env)
                     Err error -> Err error
                 curXModel = getXModelFromEnv newEnv |> Maybe.withDefault XModel.emptyXModel
                 curDataset = Dict.get model.datasetRef curXModel.datasets |> Maybe.withDefault XModel.emptyDataset
@@ -382,8 +381,36 @@ update msg model prevEnv =
             ({ model | focus = Just (CallTreeZipper focus) }, prevEnv, Cmd.none)
         NoOp ->
             (model, prevEnv, Cmd.none)
+makeCalcEnv : String -> Maybe Env -> Result Error Env
+makeCalcEnv source curEnv  =
+    let
+        newEnv = Module.makeEnv source curEnv 
+        curXmodel = getXModelFromEnv newEnv |> Maybe.withDefault XModel.emptyXModel
 
-             
+        updatedXModel = 
+            Dict.foldl (\datasetRef dataset accXModel ->
+                let
+                    dSetFormulas = getFormulasForDSetRef datasetRef newEnv
+                    curDataset = dataset
+                    updatedDataset = updatePointedFormulasForDSet curXmodel curDataset dSetFormulas
+                in
+                { accXModel | datasets = Dict.insert datasetRef updatedDataset accXModel.datasets }
+                ) curXmodel curXmodel.datasets
+        updatedEnv = setXModelToEnv newEnv updatedXModel
+    in
+    updatedEnv
+
+getFormulasForDSetRef : DatasetRef -> Result Error Env -> List String
+getFormulasForDSetRef datasetRef  resEnv =
+    case resEnv of
+        Ok env ->
+            case Dict.get [datasetRef] env.functionsInFormulas of
+                Just funcDict ->
+                    funcDict.functionCalcOrder
+                Nothing ->
+                    []
+        Err _ ->
+                    []
 getXModelFromEnv : Result Error Env -> Maybe XModel
 getXModelFromEnv envModelField  = 
             case envModelField of 
@@ -406,8 +433,9 @@ getLhsExpressions envModelField datasetRef =
             case envModelField of 
                 Ok curEnvOk ->
                     let
-                        funcList = Dict.get [datasetRef] curEnvOk.functionCalcOrders
-                            |> Maybe.withDefault [] 
+                        funcList = Dict.get [datasetRef] curEnvOk.functionsInFormulas
+                            |> Maybe.andThen (\funcDict -> Just funcDict.functionCalcOrder)
+                            |> Maybe.withDefault []
 
                     in
                     if List.isEmpty funcList then
@@ -416,7 +444,7 @@ getLhsExpressions envModelField datasetRef =
                         Ok funcList
                 Err err -> Err err
 
-getEnvFunctions : Result Error Env -> DatasetRef -> Maybe (FastDict.Dict String Expression.FunctionImplementation)
+getEnvFunctions : Result Error Env -> DatasetRef -> Maybe (Dict String Expression.FunctionImplementation)
 getEnvFunctions envModelField datasetRef = 
             case envModelField of 
                 Ok curEnvOk ->
@@ -426,8 +454,8 @@ getEnvFunctions envModelField datasetRef =
                     in
                     funcList
                 Err _ -> Nothing
--- used to get the dataArray for LHS expressions, without data if they are not calculated yet
 
+-- used to get the dataArray for LHS expressions, without data if they are not calculated yet
 type DArOrFuncName = DAr DataArray | FuncName String
 getExprDataArray : Maybe XModel -> DatasetRef -> String -> Result String DArOrFuncName
 getExprDataArray maybeXModel curDatasetRef expression = 
@@ -453,6 +481,60 @@ getExprDataArray maybeXModel curDatasetRef expression =
                     Err errMsg ->
                         -- Err ("Error in getExprDataArray from rangeNameToDef: " ++ errMsg)
                         Ok (FuncName expression)
+updatePointedFormulasForDSet : XModel -> Dataset -> List String -> Dataset
+updatePointedFormulasForDSet xModel dataset formulaList =
+    let
+        -- Clear the pointedFormulas for all data arrays in the dataset
+        clearedDArs = 
+            Dict.foldl (\dArRef dAr accDict ->
+                Dict.insert dArRef { dAr | pointedFormulas = Dict.empty } accDict
+                ) Dict.empty dataset.dataArrays
+        clearedDataset = 
+            { dataset 
+            | dataArrays = clearedDArs
+            }
+
+        -- Update the pointedFormulas for each formula in the formulaList
+        finalDataset = 
+            List.foldl (\formula accDataset ->
+                let
+                    prevDArray = Dict.get dArRef accDataset.dataArrays |> Maybe.withDefault XModel.emptyDataArray
+                    (dArRef, pointedDict) = updatePointedFormulasForExpr 
+                        (Just xModel) dataset.ref formula Dict.empty
+                    mergedDict = Dict.union prevDArray.pointedFormulas pointedDict
+                    updatedDArray = { prevDArray | pointedFormulas = mergedDict }
+                    updatedDataset = { accDataset | dataArrays = Dict.insert dArRef updatedDArray accDataset.dataArrays }
+                in
+                updatedDataset 
+            ) clearedDataset formulaList
+    in
+    finalDataset
+
+
+updatePointedFormulasForExpr : Maybe XModel -> DatasetRef -> String -> Dict Int String 
+    -> (DataArrayRef, Dict Int String)
+updatePointedFormulasForExpr maybeXModel curDatasetRef expression prevPointedFormulas  = 
+    case maybeXModel of
+        Nothing -> ("", Dict.empty)
+        Just xModel ->
+            let
+                resLocArray = getExprDataArray maybeXModel curDatasetRef expression
+                okLocArray = case resLocArray of
+                    Ok (DAr dataArray) -> dataArray
+                    _ -> XModel.emptyDataArray
+                fullArray = XModel.getDataArrayWithDimsFromXModel xModel curDatasetRef okLocArray.ref
+                flatIndicesToPoint = 
+                    case fullArray of
+                        Just fullArrayJust ->
+                            XModel.mapFlatIndices okLocArray fullArrayJust
+                        Nothing -> Array.empty
+                updatedPointedFormulasDict =
+                    Array.foldl (\flatIndex accDict ->
+                        Dict.insert flatIndex expression accDict
+                        ) prevPointedFormulas flatIndicesToPoint
+            in
+            (okLocArray.ref, updatedPointedFormulasDict)
+
 
 
 -- to solve no recalc added envWithCoreFunctions to main.Init 
@@ -491,7 +573,7 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
                                 _ -> Nothing
                         }
                     -- main calc loop
-                    updatedModelEnv = 
+                    (calcUpdatedModel, calcUpdatedEnv)  = 
                         case dataArrayOrFunc of
                             FuncName funcName -> -- managed non dataArray references (PROVISIONAL)
                                 case result of
@@ -604,7 +686,7 @@ calcExpressionToXModel moduleSource expression curModel prevEnv =
                                         , prevEnv)
                 in
                 -- Debug.log ("Result for expression " ++ expression ++ ": " ++ Debug.toString result) <|
-                updatedModelEnv
+                (calcUpdatedModel, calcUpdatedEnv) 
             Err err ->
                 ({ curModel | output = Err (err ++ ", or no RangeName") }, prevEnv)
     in
@@ -627,7 +709,7 @@ updateEnvFromDa calculatedDArRenamed prevEnv =
         updatedDAr = updatedDArResult |> Result.withDefault XModel.emptyDataArray
         updatedArrays = Dict.insert arRef updatedDAr dataset.dataArrays
         updatedDataset = { dataset | dataArrays = updatedArrays }
-        updatedDatasets = FastDict.insert datasetRef updatedDataset curXModel.datasets
+        updatedDatasets = Dict.insert datasetRef updatedDataset curXModel.datasets
         updatedXModelFromDa = { curXModel 
                     | datasets = updatedDatasets 
                 }
@@ -1158,7 +1240,7 @@ viewCallTree source ((CallTreeZipper { current, parent }) as zipper) =
 
 viewEnv : Types.Env -> Element msg
 viewEnv { values } =
-    if FastDict.isEmpty values then
+    if Dict.isEmpty values then
         Element.none
 
     else
@@ -1182,7 +1264,7 @@ viewEnv { values } =
                   , width = shrink
                   }
                 ]
-            , data = FastDict.toList values
+            , data = Dict.toList values
             }
 
 

@@ -1,4 +1,4 @@
-module DatasetPage exposing (..) -- former ingle page Main.elm
+module DatasetPage exposing (..) -- former single page Main.elm
 -- TO BUILD
 -- remove /build folder
 -- > make all
@@ -115,12 +115,16 @@ update msg prevEnv model =
                 -- Update the spreadsheetUIModel and xModel from the subMsg action in SpreadsheetUI
                 (sUiModel1, xModel1, sUiCmd1) = SpreadsheetUI.update subMsg model.spreadsheetUIModel curXModel
 
-                -- Function to handle recalculation if neededhandleRecalc : Maybe DatasetRef -> CalcEngine.Model -> XModel -> SpreadsheetUI.Model -> (Models, Cmd Msg)
+                -- Function to handle recalculation if needed
+                --  RECALC TRIGGERING MOVED TO MAIN EnvUpdated but still needed here, TODO: check if needed
+                handleRecalc : List DatasetRef -> CalcEngine.Model -> XModel -> SpreadsheetUI.Model -> (Models, List (Cmd Msg))
                 handleRecalc datasetRefs calcModel xModel sUiModel =
                     case List.filter (\r-> r == calcModel.datasetRef) datasetRefs |> List.head  of
-                        Just datasetName ->
+                        Just datasetName -> -- calcModel.datasetRef is in datasetsToRecalc
                                 let
+                                    -- SaveCell populates datasetsToRecalc
                                     envWithChangedXModel = CalcEngine.setXModelToEnv curEnv xModel
+                                    -- trigger recalculation, disabled, moved to EnvUpdated
                                     (calcModelCalculated, envCalculated, calcCmd) = CalcEngine.update CalcEngine.EvalFormulas calcModel envWithChangedXModel
                                     xModelCalculated = CalcEngine.getXModelFromEnv envCalculated |> Maybe.withDefault XModel.emptyXModel
                                 -- Step 2: Update SpreadsheetUI with updated XModel
@@ -137,11 +141,13 @@ update msg prevEnv model =
                         Nothing ->
                             -- No recalculation needed, return the same models and no command
                             ({calc=calcModel, x=xModel, ui=sUiModel}, [Cmd.none])
+                -- end of handleRecalc
+
 
 
                 (models, recalcCmds) =  
                     handleRecalc xModel1.datasetsToRecalc curCalcModel xModel1 sUiModel1
-                    -- ({calc=curCalcModel, x=xModel1, ui=sUiModel1}, Cmd.none)  -- no recalc
+                    --({calc=curCalcModel, x=xModel1, ui=sUiModel1}, [Cmd.none])  -- no recalc
                 finalModel =
                     { model 
                         | spreadsheetUIModel = sUiModel1 -- models.ui
@@ -511,7 +517,8 @@ init env datasetRef =
     (model
     , env
     --, Cmd.batch [initialFocusCmd, initializeEditorCmd, initEditorUpdateMsg])
-    , Cmd.none) -- initializeEditorCmd is executed in the view
+    --, Cmd.none) -- initializeEditorCmd is executed in the view
+    , Cmd.map CalcMsg (cmdMsg CalcEngine.EvalFormulas)) -- trigger recalculation
 
 
 
