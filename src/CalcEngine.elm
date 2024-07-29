@@ -44,7 +44,7 @@ import FastDict as Dict exposing (Dict)
 import AppUtil exposing (cmdMsg, myLog)
 import Debug exposing (log)
 import Array exposing (get)
-import Core.Basics exposing (le)
+
 import Maybe.Extra exposing (prev)
 
 

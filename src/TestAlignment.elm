@@ -1,4 +1,4 @@
-module Alignment exposing (..)
+module TestAlignment exposing (..)
 
 import Array exposing (Array)
 import FastDict as Dict exposing (Dict)
@@ -8,7 +8,7 @@ import Array.Extra
 import List.Extra
 import XModel exposing (..)
 import TypesXModel exposing (..)
-import Core.Basics exposing (le)
+
 import Types exposing (Value(..))
 
 
