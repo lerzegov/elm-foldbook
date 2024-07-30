@@ -49,16 +49,15 @@ view model =
             Just xModel -> xModel.datasetRefs
             Nothing  -> []
     in
-    column [ spacing 20, padding 20 ]
-        [ logo
-        , header "Welcome to elm-foldBook"
+    column [ spacing 10, padding 20 , width fill]
+        [ row [width fill] [logo, (header "Welcome to elm-foldBook") ]
         , textPrompt
         , datasetListView datasetList
         ]
 
 header : String -> Element Msg
 header title =
-    el [ Font.size 32, Font.bold, alignTop, centerX, padding 20 ] (text title)
+    el [ Font.size 32, Font.bold, alignTop, alignLeft, padding 20 ] (text title)
 
 logo : Element Msg
 logo =
@@ -68,12 +67,12 @@ logo =
 
 textPrompt : Element Msg
 textPrompt =
-    el [ Font.size 20, Font.italic, centerX, padding 10 ]
+    el [ Font.size 20, Font.italic, alignLeft, padding 20 ]
         (text "Click to open a foldSheet")
 
 datasetListView : List String -> Element Msg
 datasetListView datasets =
-    column [ spacing 10, centerX ]
+    row [ spacing 10, padding 20, alignLeft ]
         (List.map datasetLink datasets)
 
 datasetLink : String -> Element Msg

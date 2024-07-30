@@ -28,9 +28,9 @@ type Tray
 
 
 type alias TrayToken =
-    { tray : Tray
-    , name : String
-    , items : Array String
+    { tray : Tray -- tray type token belongs to
+    , name : String -- token name => dimRef
+    , items : Array String -- item names => coords
     , color : Color
     , iterOrder : Int -- maybe used for mapping to matrix categories
     , width : Int -- maybe used to position sticky row headers
@@ -104,7 +104,7 @@ type alias Item =
 type alias Model =
     -- DnD
     { dnd : DnDList.Groups.Model
-    , trayData : List TrayToken
+    , trayData : List TrayToken -- set by XView.defaultTrayData then modified via Dnd
     -- Dropdown
     , dropdownStates : Dict String (Dropdown.State Item)
     , dropdownOptions : Dict String (List String)
@@ -252,7 +252,7 @@ viewDropdown dropdownId model =
 
 pageTrayView : Model -> Element Msg
 pageTrayView model =
-    trayView model Page darkGray
+    trayView model Page lightGray
 
 rowTrayView : Model -> Element Msg
 rowTrayView model =
@@ -262,6 +262,7 @@ columnTrayView : Model -> Element Msg
 columnTrayView model =
     trayView model Column lightRed
 
+-- handles the ghost view of the dragged item
 ghostView : DnDList.Groups.Model -> List TrayToken -> Element Msg
 ghostView dnd items =
     case maybeDragItem dnd items of

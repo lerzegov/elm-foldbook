@@ -63,7 +63,7 @@ import Element.Font as Font
 import Html exposing (col)
 import XModel exposing (isDataArrayText)
 import Time exposing (Posix)
-import Ports exposing (focusAndSelect)
+-- import Ports exposing (focusAndSelect) -- TODO check if needed
 
 
 
@@ -314,7 +314,7 @@ update msg model xModel=
                     updateCellUI rowIndex colIndex (\cellUIarg -> 
                         { cellUIarg | value = editableValue, isEditing = True }) model.cellsUI
                 cellId = getCellId rowIndex colIndex
-                --focusCmd = focusAndSelect cellId -- per selezionare contenuto
+                --focusCmd = focusAndSelect cellId -- per selezionare contenuto TODO CHECK
                 focusCmd = focusCommand (getCellId rowIndex colIndex) 
             in
             -- ( { model | cells = updatedCells, editingValue = Just initialEditingValue }
@@ -1250,9 +1250,9 @@ dataCellsContainer dataCellsArg =
         -- Replace with actual data cells content
         dataCellsArg
 
--- creates headers using trayStrings, gets Array2D of seetData.data, iterates on i rows and j cols
+-- creates headers using trayStrings, gets Array2D of sheetData.data, iterates on i rows and j cols
 -- and calls viewCellInPivot for each cell (that gets values from cellsUI)
--- gets getSpreadsheetDataForView from current model.dtaView
+-- gets getSpreadsheetDataForView from current model.dataView
 -- no data shaping here, only computes the headers' shapes
 viewPivotTableFromSpreadsheetView :
     Model  -> XModel -> Element Msg

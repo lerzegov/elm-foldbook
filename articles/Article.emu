@@ -1,0 +1,91 @@
+|> Metadata 
+    author = Luca Erzegovesi
+    title = How I Created /foldBook/
+    description =
+        How I came to fill the missing slot in financial spreadsheet software.
+
+|> Title
+    La vera storia del trio di Truccazzano
+
+Gli arzigogoli sono a zero. Ma le /assurde/ invenzioni della stampa
+hanno ridotto il ~vero~ falso antico mestiere a una ridicola *parodia*.
+
+Ecco un'equazione:
+`a = l^2 + b^2`{eqn}
+
+|> Image
+    src = images/beota.png
+    description = Un beota
+
+Questo ragazzo è un autentico beota. Non ha mai letto un libro in vita sua.
+Pensa di essere un programmatore, ma non sa nemmeno cosa sia un compilatore.
+Guardate che codice sorgente ha scritto:
+
+|> Code
+    for (int i = 0; i < 10; i++) {
+        printf("Hello, beota!\n");
+    }
+
+Ecco altri due soggetti altrettanto beoti:
+
+|> Image
+    src = images/mulatto.png
+    description = Immigrato di seconda generazione
+
+|> Image
+    src = images/segaligna.png
+    description = Una tipa segaligna
+|> Subtitle
+    I am trying to make a list without a name with treeList block
+
+|> List
+    1. list items on the same level ...
+
+    --  must be separated by a blank line
+        -- on sub levels no blank line is needed
+        -- and from sub levels to new super level
+    --  and can be indented
+        one can add text here without hyphens attached to the previous line
+    --  new first level item without newline
+
+|> List
+    1.  This is definitely the first thing.
+        Add all together now
+        With some Content
+
+    -- Another thing, numbering is auto.
+
+        1. sublist
+
+        -- more sublist
+
+            -- indented and not numbered because is 1st of its level
+
+
+        -- other sublist
+
+            -- subthing not numbered
+
+            -- other subthing
+
+    -- and yet, another
+        --  and another one
+            With some content without bullets
+|> Subtitle
+    these are Szerzo's famous counters
+
+|> Counter
+    name = var1
+
+|> Counter
+    name = var2
+    
+|> Sum
+    arg1 = var1
+    arg2 = var2
+
+|> Subtitle
+    Excerpt from MD Griffiths's example `editor`
+
+`Lorem Ipsum is simply` dummy text of the printing and [typesetting industry]{link| url = https://www.hurix.com/how-automation-is-revolutionizing-the-typesetting-industry/ }. Lorem Ipsum has been the industrys standard 
+

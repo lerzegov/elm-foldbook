@@ -17,6 +17,8 @@ import TypesXModel exposing (..)
 import FastDict as Dict exposing (Dict)
 import AppUtil exposing (cmdMsg)
 import CalcEngine exposing (getXModelFromEnv, Msg(..))
+import MarkupSource exposing (Msg(..))
+import MarkupFoldbook exposing (Msg(..))
 import Html.Attributes exposing (default)
 
 
@@ -27,6 +29,11 @@ type alias Model =
     , datasetModels : Dict String DatasetPage.Model
     , key : Navigation.Key
     , counter : Int
+    , markupSourceModel : MarkupSource.Model
+    , markupFoldbookModel : MarkupFoldbook.Model
+    -- drives the visibility of the logs in the first line (msgLine in Main) and below the formula editor
+    -- (viewLogs in DatasetPage); flag is set in the code here and propagated to DatasetPage.update via update.DatasetMsg here
+    , showLogs : Bool
     }
 
 type Msg
@@ -34,11 +41,14 @@ type Msg
     | HomeMsg Home.Msg
     | DatasetMsg String DatasetPage.Msg
     | EnvUpdated
+    | MarkupSourceMsg MarkupSource.Msg
+    | MarkupFoldbookMsg MarkupFoldbook.Msg
 
 
 init : () -> Url -> Navigation.Key -> (Model, Cmd Msg)
 init _ url key =
     let
+        initShowLogs = False
         startEnv = Module.emptyEnvWithCoreFunctions
         defaultXModel = XModel.myXModel
         startXModel = { defaultXModel | datasetsToRecalc = ["Az", "Macro", "Ce"] }
@@ -61,6 +71,8 @@ init _ url key =
             in
             Dict.insert dSet.ref dPageModel dPageAcc
             ) Dict.empty startDSets
+        initMarkupSourceModel = MarkupSource.initialModel
+        initMarkupFoldbookModel = MarkupFoldbook.initialModel
         
         initialModel =
             { page = parseUrl url
@@ -69,10 +81,18 @@ init _ url key =
             , datasetModels = initDatasetPages
             , key = key
             , counter = 0
+            , markupSourceModel = initMarkupSourceModel
+            , markupFoldbookModel = initMarkupFoldbookModel
+            , showLogs = initShowLogs
             }
+        initCmds =
+            Cmd.batch
+                [ Cmd.map MarkupFoldbookMsg (MarkupFoldbook.initCmd)
+                , cmdMsg EnvUpdated
+                ]
     in
     -- Debug.log "called Main.init" <| called also on new tab open but once
-    (initialModel, cmdMsg EnvUpdated) -- trigger initial recalc
+    (initialModel, initCmds) -- trigger initial recalc
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -95,7 +115,7 @@ update msg model =
                 (newDatasetModel, newEnv, datasetCmd) =
                     case Dict.get datasetName model.datasetModels of
                         Just datasetModel ->
-                            DatasetPage.update datasetMsg model.env datasetModel
+                            DatasetPage.update datasetMsg model.env { datasetModel | showLogs = model.showLogs }
 
                         Nothing ->
                             DatasetPage.init model.env datasetName
@@ -149,6 +169,18 @@ update msg model =
               }
             , Cmd.batch recalcCmds
             )
+
+        MarkupSourceMsg markupMsg ->
+            let
+                (newMarkupModel, markupCmd) = MarkupSource.update markupMsg model.markupSourceModel
+            in
+            ( { model | markupSourceModel = newMarkupModel }, Cmd.map MarkupSourceMsg markupCmd )
+        MarkupFoldbookMsg markupMsg ->
+            let
+                (newMarkupModel, markupCmd) = MarkupFoldbook.update markupMsg model.markupFoldbookModel
+            in
+            ( { model | markupFoldbookModel = newMarkupModel }, Cmd.map MarkupFoldbookMsg markupCmd )
+
 addMsgLine : String -> Result Error Env -> Result Error Env
 addMsgLine msg env =
     case env of
@@ -214,16 +246,21 @@ view model =
         bodyContent =
             case model.page of
                 HomePage ->
-                        (Element.map HomeMsg (Home.view model.homeModel))
+                    column [width fill] 
+                        [(Element.map HomeMsg (Home.view model.homeModel))
+                        -- moved to DatasetPage to keep the app instance together
+                        --, Element.map MarkupSourceMsg (MarkupSource.view model.markupSourceModel)
+                        ]
 
                 DatasetPage datasetName ->
                     case Dict.get datasetName model.datasetModels of
                         Just datasetModel ->
-                            column [] 
+                            column [width fill] 
                                 [ msgLine model 
                                 , Element.map (DatasetMsg datasetName) 
                                     (DatasetPage.view model.key model.env datasetModel)
-                                
+                                , Element.map MarkupSourceMsg (MarkupSource.view model.markupSourceModel)
+                                , Element.map MarkupFoldbookMsg (MarkupFoldbook.view model.markupFoldbookModel)
                                 ]
                             
                         Nothing ->
@@ -237,7 +274,10 @@ view model =
 
 msgLine : Model -> Element Msg
 msgLine model =
-    Element.paragraph [] [(Element.text ("\n" ++ getMsgLine model.env ++ "\n"))]
+    if model.showLogs then
+        Element.paragraph [] [(Element.text ("\n" ++ getMsgLine model.env ++ "\n"))]
+    else
+        Element.none
 
 getXModelRefFromEnv : Result Error Types.Env -> String 
 getXModelRefFromEnv env  =
@@ -258,9 +298,16 @@ subscriptions model =
         datasetSubs =
             Dict.toList model.datasetModels
                 |> List.map (\(datasetName, datasetModel) -> DatasetPage.subscriptions datasetModel |> Sub.map (DatasetMsg datasetName))
+    
+        markupSourceSubs = 
+            MarkupSource.subscriptions model.markupSourceModel
+                |> Sub.map MarkupSourceMsg
+        markupFoldbookSubs = 
+            MarkupFoldbook.subscriptions model.markupFoldbookModel
+                |> Sub.map MarkupFoldbookMsg
     in
     Sub.batch
-        (homeSubs::datasetSubs)
+        (homeSubs::markupSourceSubs::markupFoldbookSubs::datasetSubs) -- raw handling of list vs singleton subs
 
 onUrlRequest : Browser.UrlRequest -> Msg
 onUrlRequest urlRequest =

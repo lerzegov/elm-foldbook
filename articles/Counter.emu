@@ -1,0 +1,40 @@
+|> Metadata
+    author = Luca Erzegovesi
+    title = Counteradder
+    description = 
+        A simple interactive counteradder.
+
+|> Title
+    Interactive counteradder
+
+Mo te /passa/ aí um valor. Usando `paragraph` in flatten non spezza la frase su cambio formato *con column non funzionava* 
+Gestisce testo multilinea e ~barrato~
+Qui a capo senza linea vuota: citazione "Ciao amico del mattino".
+Qui esempio di glueing => &nbsp;: citazione "Ciao<>amico<>del<>pomeriggio<>e<>della<>sera<>zuzzurellone<>che<>sei!"
+
+Replacement: non mi dire ... ma come fai a fare tutto sto casino?!  
+
+Questo è un testo multilinea dopo una linea vuota.
+
+
+
+
+Questo è un testo multilinea dopo tante linee vuote, le collassa in una sola.
+Qui a capo senza linea vuota: Ciao amico della sera.
+
+
+
+
+|> Counter
+    name = var1
+
+|> Counter
+    name = var2
+    
+|> Sum
+    arg1 = var1
+    arg2 = var2
+
+|> Subtitle
+    Closing subtitle dd
+

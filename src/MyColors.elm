@@ -16,6 +16,9 @@ red = rgb255 255 0 0
 green : Color
 green = rgb255 0 255 0
 
+paleGreen : Color
+paleGreen = rgb255 207 253 188
+
 blue : Color
 blue = rgb255 0 0 255
 

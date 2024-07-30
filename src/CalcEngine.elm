@@ -49,23 +49,10 @@ import Maybe.Extra exposing (prev)
 
 
 
-
-type Msg
-    = Input String
-    | EvalFormulas
-    | EvalFormula String (List String)-- DatasetRef not needed, is prepended to the expression before __
-    | UpdateFormulas
-    | Focus
-        { parent : Maybe CallTreeZipper
-        , current : CallTree
-        }
-    | NoOp
-
-
 type alias Model = -- data for calculation process
     { datasetRef : DatasetRef
-    , input : String -- code in the console
-    , parsed : Maybe (Node Expression.Expression)
+    , formulaInput : String -- code in the console
+    , formulaParsed : Maybe (Node Expression.Expression)
     , output : Result String String
     , countUpdates : Int
     , callTrees : List CallTree
@@ -79,6 +66,16 @@ type alias Model = -- data for calculation process
     }
 
 
+type Msg
+    = Input String
+    | EvalFormulas
+    | EvalFormula String (List String)-- DatasetRef not needed, is prepended to the expression before __
+    | UpdateFormulas
+    | Focus
+        { parent : Maybe CallTreeZipper
+        , current : CallTree
+        }
+    | NoOp
 
 -- evalWithEnv works only with whole module defined in console with main expression
 -- eval works also with only expression in console
@@ -105,8 +102,8 @@ initialModel env datasetRef =
     in
     -- Debug.log ("initialModel for dataset: " ++ datasetRef ) <|
     { datasetRef = datasetRef
-    , input = initSource -- initial code in the console
-    , parsed = initParsed -- disabled by Luca
+    , formulaInput = initSource -- initial code in the console
+    , formulaParsed = initParsed -- disabled by Luca
     , output = initOutput
     , countUpdates = 0
     , callTrees = []
@@ -144,10 +141,10 @@ reinit model prevEnv input =
     -- in my refactoring module must be defined in the input, toModule does not work
        -- Debug.log ("reinit input: ")
        ( { datasetRef = initDatasetRef
-        , input = initSource 
+        , formulaInput = initSource 
         -- gets the expression of the main function, 
         -- only to pass to viewParsed and display it in the "Parsed as" box
-        , parsed = initParsed -- disabled by Luca
+        , formulaParsed = initParsed -- disabled by Luca
         , output = initOutput -- the result of the evaluation
         , countUpdates = 0
         , callTrees = []
@@ -162,10 +159,10 @@ reinit model prevEnv input =
         , Cmd.none )
     else -- code is not executable
         ({ datasetRef = ""
-        , input = input 
+        , formulaInput = input 
         -- gets the expression of the main function, 
         -- only to pass to viewParsed and display it in the "Parsed as" box
-        , parsed = Nothing -- tryParse input -- disabled by Luca
+        , formulaParsed = Nothing -- tryParse input -- disabled by Luca
         , output = Ok "" -- the result of the evaluation
         , countUpdates = 0
         , callTrees = []
@@ -210,7 +207,7 @@ viewConsole : Model  -> Element Msg
 viewConsole model  =
     column []
         [ viewOutput model.output model.countUpdates
-        , ( viewSource model.input model)
+        , ( viewSource model.formulaInput model)
         ]
 
 -- substituted by viewConsole
@@ -229,7 +226,7 @@ viewInput model =
                     , Font.size 14
                     ]
                     { spellcheck = False
-                    , text = model.input -- input box linked to model.input
+                    , text = model.formulaInput -- input box linked to model.input
                     , onChange = Input -- update action
                     , label = Input.labelHidden "Input"
                     , placeholder = Nothing
@@ -238,7 +235,7 @@ viewInput model =
             ]
 viewCommands : Element Msg
 viewCommands  =
-        Theme.boxRow "Commands" [width <| fillPortion 1, alignTop] <|
+        Theme.boxRow "Calc commands" [width <| fillPortion 1, alignTop] <|
                 [ Theme.button []
                     { onPress = Just (EvalFormulas) -- to force the update of the dataset
                     , label = text <| "Eval formulas" -- ++ toRun
@@ -282,8 +279,8 @@ viewSource moduleSource model =
             -- commented source code, trees and logLines to avoid clutter:
             -- source code syntax highlighted and parsed as Elm
     Theme.wrappedRow [ width fill ]
-            [ Element.Lazy.lazy viewParsed model.parsed
-            , if moduleSource == model.input then
+            [ Element.Lazy.lazy viewParsed model.formulaParsed
+            , if moduleSource == model.formulaInput then
                 Element.none -- don't show the full source if the input is already a module
                             -- a valid module will be parsed and shown in the "Parsed as" box
 
@@ -335,7 +332,7 @@ update msg model prevEnv =
             let
                 newLog = model.log ++ "EvalFormula expr: " ++ expression ++ "\n"
                             -- ++ "Remaining expressions: " ++ Debug.toString remainingExpressions ++ "\n"
-                (newModel, newEnv) = calcExpressionToXModel model.input expression model prevEnv
+                (newModel, newEnv) = calcExpressionToXModel model.formulaInput expression model prevEnv
 
                 nextCmd =
                     case remainingExpressions of
@@ -351,7 +348,7 @@ update msg model prevEnv =
 
         UpdateFormulas  -> -- remakes env, updates formulas for dataset in xModel and env, and recalculates the dataset
             let
-                updatedFormulas = model.input
+                updatedFormulas = model.formulaInput
                 newEnv = case prevEnv of
                     Ok env -> 
                         makeCalcEnv updatedFormulas (Just env)
