@@ -1,7 +1,8 @@
-module MarkupFoldbook exposing (main, Msg(..), Model, initialModel, initCmd, update, view, subscriptions)
+module MarkupFoldbook exposing (main, Msg(..), Model, initialModel, initCmd, update, view, subscriptions
+        , viewSheetByDatasetRef)
 
 
-import Dict
+import FastDict as Dict exposing (Dict)
 import List
 import Http
 import Json.Decode as Decode
@@ -32,15 +33,15 @@ import Mark.Internal.Id as Id exposing (Id)
 import Browser exposing (Document)
 import Browser.Dom as Dom
 
-
+import FastDict as Dict exposing (Dict)
 import MyColors exposing (..)
 import Ports exposing (..)
-import TypesMarkup exposing (..)
+import TypesMarkup exposing (MarkupEnv, emptyMarkupEnv, EditState, Values, getValue, ShowValues(..))
 import AppUtil exposing (..)
-
-import DatasetPage exposing (view)
+import Types exposing (Env, Error(..))
+import DatasetPage exposing (Model)
 -- TODO
--- add a plian view fucntion to DatasetPage
+-- add a plain view fucntion to DatasetPage
 -- consider to add Env in place of EnvMarkup here
 -- create a block type to shoe a dataset page given the dataset name as is
 -- add fields to configure the dataset view
@@ -58,11 +59,13 @@ uiAttr = Element.htmlAttribute
 type alias Model =
     { source : Maybe String
     , sourcePath : Maybe String
-    , env : MarkupEnv
+    , mkEnv : MarkupEnv
     , parsed : Maybe Mark.Parsed
     , errors : List MkErr.Error
     , svg : String -- svg buffer to be rendered
     -- editing moved to env because interacts with block parsers
+    -- from former MarkupSource
+    , editorMarkupContent : String
     }
 
 
@@ -83,10 +86,11 @@ initialModel : Model
 initialModel =
     { source = Nothing
     , sourcePath = Just initSourcePath
-    , env = { emptyMarkupEnv | values = initValues }
+    , mkEnv = { emptyMarkupEnv | values = initValues }
     , parsed = Nothing
     , errors = []
     , svg = ""
+    , editorMarkupContent = ""
     }
 initCmd : Cmd Msg
 initCmd = 
@@ -108,6 +112,7 @@ subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch 
     [ receiveSvg (SetSvg)
+    , markupContentChanged  MarkupContentChanged
     ]
 
 
@@ -131,6 +136,8 @@ type Msg
     | CancelValueEdit
     | SaveSource
     | SourceSaved
+    | DatasetPageMsgInMarkup String DatasetPage.Msg
+    | MarkupContentChanged String
     | NoOp
 
 
@@ -139,24 +146,24 @@ update msg model =
     case msg of
         SetValue ( key, val ) ->
             let
-                curEnv = model.env
+                curEnv = model.mkEnv
                 updatedEnv =
                     {curEnv
                         | values =
                             Dict.insert key
                                 val
-                                model.env.values
+                                model.mkEnv.values
                     }
             in
             ({ model
-                | env =
+                | mkEnv =
                     updatedEnv
             }
             , Cmd.none
             )
         SetValueFromString key strVal  ->
             let
-                curEnv = model.env
+                curEnv = model.mkEnv
                 cleanedStrVal = strVal -- cleaning non serve qui ma seve add ".0" in edit
                     -- if String.endsWith decimalSeparator strVal then
                     --     strVal ++ "0"
@@ -172,10 +179,10 @@ update msg model =
                                     | values =
                                         Dict.insert key
                                             v
-                                            model.env.values
+                                            model.mkEnv.values
                                 }
                         in 
-                        ({ model | env = updatedEnv}, Cmd.none)
+                        ({ model | mkEnv = updatedEnv}, Cmd.none)
         
                     Nothing -> (model, cmdMsg CancelEdit)
 
@@ -191,6 +198,7 @@ update msg model =
                             in
                             ( { modelWithSource
                                 | parsed = Just parsed
+                                , editorMarkupContent = src
                               }
                             , cmdMsg (ProcessEquations equations)--Cmd.none 
                             )
@@ -202,6 +210,7 @@ update msg model =
                             in
                             ( { modelWithSource
                                 | parsed = Just partial.result
+                                , editorMarkupContent = "# HAS PARTIAL ERRORS\n" ++ src
                                 , errors = partial.errors
                               }
                             , cmdMsg (ProcessEquations equations) -- Cmd.none 
@@ -210,6 +219,7 @@ update msg model =
                         Mark.Failure errors ->
                             ( { modelWithSource 
                                 | parsed = Nothing
+                                , editorMarkupContent = "# HAS ERRORS\n" ++ src
                                 , errors = errors }
                             , Cmd.none
                             )
@@ -222,7 +232,7 @@ update msg model =
                     ( model, Cmd.none )
         SetSvg (src, svgContent) ->
             let
-                curEnv = model.env
+                curEnv = model.mkEnv
                 updatedEnv =
                     { curEnv
                         | equations =
@@ -231,17 +241,17 @@ update msg model =
                                 curEnv.equations
                     }
             in
-            ( { model | env = updatedEnv }, Cmd.none )
+            ( { model | mkEnv = updatedEnv }, Cmd.none )
 
         RenderMathJax src ->
             let
-                curEnv = model.env
+                curEnv = model.mkEnv
                 updatedEnv = { curEnv | pendingEqn = Just src }
             in
-            ( { model | env = updatedEnv }, renderMathJax src )
+            ( { model | mkEnv = updatedEnv }, renderMathJax src )
 
         RequestRender src ->
-            if Dict.member src model.env.equations then
+            if Dict.member src model.mkEnv.equations then
                 ( model, Cmd.none )
             else
                 ( model, renderMathJax src )
@@ -266,36 +276,36 @@ update msg model =
                         curDescr::rest ->
                             let
                                 content = extractContentFromMaybeDescr (Just curDescr)
-                                curEnv = model.env
+                                curEnv = model.mkEnv
                                 -- failure, needs metadata
                                 updatedEnv = { curEnv | editState = Just { id = id, content = content } }
 
                             in
-                            ( { model | env = updatedEnv }
+                            ( { model | mkEnv = updatedEnv }
                             , focusCommand (idStr ++ "-edit")
                             )
 
 
         UpdateContent newContent ->
-            case model.env.editState of
+            case model.mkEnv.editState of
                 Just editState ->
                     let
-                        curEnv = model.env
+                        curEnv = model.mkEnv
                         updatedEnv = { curEnv | editState = Just { editState | content = newContent  } }
                     in
-                    ( { model | env = updatedEnv }
+                    ( { model | mkEnv = updatedEnv }
                     , Cmd.none
                     )
                 Nothing ->
                     (model, Cmd.none)
 
         SaveEdit ->
-            case model.env.editState of
+            case model.mkEnv.editState of
                 Just editState ->
                     let
                         parsedContent = parseSourceToBlocks myDocumentWithout editState.content
                         updatedParsedDoc = updateParsedDocument editState.id parsedContent model.parsed
-                        curEnv = model.env
+                        curEnv = model.mkEnv
                         updatedEnv = { curEnv | parsedDetails = Nothing, editState = Nothing }
                         parsedDetailsFound = parsedToParsedDetailsFound parsedContent
                         equations = extractEquations parsedDetailsFound
@@ -303,7 +313,7 @@ update msg model =
                     ( { model 
                       | parsed = updatedParsedDoc
                       , source = parsedToSource updatedParsedDoc
-                      , env = updatedEnv }
+                      , mkEnv = updatedEnv }
                     , 
                     Cmd.batch [
                         cmdMsg (ProcessEquations equations)
@@ -316,14 +326,14 @@ update msg model =
                     , Cmd.none)
 
         CancelEdit -> 
-            case model.env.editState of
+            case model.mkEnv.editState of
                 Just editState ->
                     let
-                        curEnv = model.env
+                        curEnv = model.mkEnv
                         updatedEnv = { curEnv | parsedDetails = Nothing, editState = Nothing }
                     in
                     ( { model 
-                      | env = updatedEnv }
+                      | mkEnv = updatedEnv }
                     , Cmd.none)
 
                 Nothing ->
@@ -338,23 +348,25 @@ update msg model =
                     (model, Cmd.none)
         ActivateValueEdit idStr -> -- idStr is the container id ++ the key of the value to edit
             let
-                curEnv = model.env
+                curEnv = model.mkEnv
                 updatedEnv = { curEnv | showValues = Editable }
             in
-            ( { model | env = updatedEnv }
+            ( { model | mkEnv = updatedEnv }
             , focusCommand (idStr ++ "-edit") )
         CancelValueEdit ->
             let
-                curEnv = model.env
+                curEnv = model.mkEnv
                 updatedEnv = { curEnv | showValues = NotEditable }
             in
-            ( { model | env = updatedEnv }, Cmd.none )
+            ( { model | mkEnv = updatedEnv }, Cmd.none )
         SaveSource ->
             case (model.source, model.sourcePath) of
                 (Just src, Just path) ->
                     let
                         cleanedSrc = cleanSource src
-                        updatedModel = { model | source = Just cleanedSrc }
+                        updatedModel = { model 
+                            | source = Just cleanedSrc 
+                            , editorMarkupContent = cleanedSrc}
                     in
                     ( updatedModel, saveFile { content = cleanedSrc, path = path } )
                 _ ->
@@ -362,6 +374,14 @@ update msg model =
 
         SourceSaved ->
             ( model, Cmd.none )
+        -- complex message to handle DatasetPage.Msg here rendering sheets in markup
+        DatasetPageMsgInMarkup datasetRef datasetPageMsg ->
+            -- Forward the DatasetPageMsg to Main where is handled by MarkupFoldbookMsg
+            -- with case on DatasetPageMsgInMarkup thatr re-routes to DatasetPageMsg
+            (model,  cmdMsg (DatasetPageMsgInMarkup datasetRef datasetPageMsg))
+        MarkupContentChanged content ->
+            -- Debug.log ("EditorContentChanged" ++ content) <|
+            ( { model | editorMarkupContent = content }, Cmd.none )
         NoOp ->
             (model, Cmd.none)
 
@@ -446,21 +466,21 @@ updateParsedDocument curId parsedEditedContent parsedDocument =
                         )
             in
             Just (Parsed
-                { parsedDoc
-                    | found =
+                { parsedDoc -- content of parsedDocument
+                    | found = -- updaates found.second with updatedChildren
                         case parsedDoc.found of
                             StartsWith starts ->
                                 StartsWith
                                     { starts
                                         | second =
                                             case starts.second of
-                                                Group group ->
+                                                Group group -> -- if second is Group, updates children
                                                     Group { group | children = updatedChildren }
                                                 _ ->
-                                                    starts.second
-                                    }
+                                                    starts.second -- if not Group, returns the original second
+                                    } -- return Parsed parsedDoc with updated found
                             _ ->
-                                parsedDoc.found
+                                parsedDoc.found -- if not StartsWith, returns the original found
                 })
 
         _ ->
@@ -479,7 +499,7 @@ viewDocument model =
                         Just parsed ->
                             case compileDocumentWith psd of
                                 Ok viewByData ->
-                                    viewByData model.env
+                                    viewByData model.mkEnv
                                 Err err ->
                                     text err
                         Nothing ->
@@ -511,7 +531,7 @@ view model =
                         Just parsed ->
                             case compileDocumentWith psd of
                                 Ok viewByData ->
-                                    viewByData model.env
+                                    viewByData model.mkEnv
                                 Err err ->
                                     text err
                         Nothing ->
@@ -524,9 +544,25 @@ view model =
                        , height fill] 
                     [ viewSaveSourceButton
                     , bodyHtml
+                    , viewEditedSource model
                     -- , parsedInspected
                     ]
 
+viewSheetByDatasetRefInternal : MarkupEnv -> String -> Element Msg
+viewSheetByDatasetRefInternal mkEnv datasetRef =
+    case Dict.get datasetRef mkEnv.datasetModels of
+        Just datasetModel ->
+            DatasetPage.viewSheet mkEnv.mainEnv datasetModel |> Element.map (DatasetPageMsgInMarkup datasetRef)
+        Nothing ->
+            Element.text ("Dataset page " ++ datasetRef ++ " not found")
+
+viewSheetByDatasetRef : Result Types.Error Types.Env -> Dict String DatasetPage.Model -> String -> Element Msg
+viewSheetByDatasetRef mainEnv datasetModels datasetRef =
+    case Dict.get datasetRef datasetModels of
+        Just datasetModel ->
+            DatasetPage.viewSheet mainEnv datasetModel |> Element.map (DatasetPageMsgInMarkup datasetRef)
+        Nothing ->
+            Element.text ("Dataset page " ++ datasetRef ++ " not found")
 
 viewSaveSourceButton : Element Msg
 viewSaveSourceButton =
@@ -539,6 +575,26 @@ viewSaveSourceButton =
         { onPress = Just SaveSource
         , label = text "Save source"
         }
+
+viewEditedSource : Model -> Element Msg
+viewEditedSource model =
+    let
+        codeMirrorElement =
+            Element.html <| Html.node "code-mirror-markup-editor"
+                            [ HtmlAttr.attribute "data-initial-value" model.editorMarkupContent
+                            , HtmlAttr.attribute "id" "markup-editor"
+                            , HtmlEvents.on "formulaContentChanged" (Decode.map MarkupContentChanged (Decode.at [ "detail" ] Decode.string)) 
+                            ] []
+    in
+    column [padding 20, spacing 10, width fill]
+        [ row [UiFont.size 24, UiFont.bold] [ text "Markup Editor" ]
+        , el [UiFont.size 16] codeMirrorElement
+        ]
+
+-- to keep an autonomous main function that can be used in the browser
+viewEditedSourceToHtml : Model -> Html.Html Msg
+viewEditedSourceToHtml model =
+    layout [] (viewEditedSource model)
 
 -- define the doc structure, in this case it's just a list of blocks
 -- by means of counterBlock produces messages (String, Float) 
@@ -572,6 +628,7 @@ myDocumentWith =
             List.map addIdToblock     
                 [ titleBlock
                 , subtitleBlock
+                , sheetBlock
                 , Mark.map flattenAndSetFontSize mkText -- sgamuffo per non rendere List (Values -> Element Msg) ma spezza esto con diversi formati
                 , counterBlock
                 , sumBlock
@@ -741,7 +798,7 @@ compileDocumentWith parsed =
                                 (List.map
                                     -- ... to Inject runtime data into each block handler
                                     -- triggering the rendering function
-                                    -- that makes them into regular `elm-html` nodes
+                                    -- that makes them into regular `elm-ui` nodes
                                     (\block -> block env)
                                     blocks
                                 )
@@ -769,20 +826,10 @@ viewErrors errors =
         (Element.html << (MkErr.toHtml MkErr.Light))
         errors
 
+
+
 -- Markup blocks
 
-
-{-| Title block, renders to h1 [][ text _ ]
-with 2nd arg in lambda: (\str _ ->)  returns a (Values -> Element msg) function!! 
--}
-
-titleBlock : Mark.Block (MarkupEnv -> Element Msg)
-titleBlock =
-    Mark.block "Title"
-        (\children ->
-            \env -> row [UiFont.bold, UiFont.size 24] (List.map (\child -> child env) children)
-        )
-        mkText
 
 curEditId : MarkupEnv -> Id
 curEditId env =
@@ -855,17 +902,31 @@ getIdAttribute id =
     let idStr = Id.toString id in
     Element.htmlAttribute (HtmlAttr.id idStr)
 
+{-| Title block, renders to h1 [][ text _ ]
+with 2nd arg in lambda: (\str _ ->)  returns a (Values -> Element msg) function!! 
+-}
+
+titleBlock : Mark.Block (MarkupEnv -> Element Msg)
+titleBlock =
+    Mark.block "Title"
+        (\children ->
+            \env -> row titleAttrs (List.map (\child -> child env) children)
+        )
+        mkText
+titleAttrs : List (Attribute msg)
+titleAttrs = [UiFont.bold, UiFont.size 24, paddingEach {top=15, right=0, bottom= 8, left= 0}]
 
 subtitleBlock : Mark.Block (MarkupEnv -> Element Msg)
 subtitleBlock =
     Mark.block "Subtitle"
         (\children ->
             \env -> row 
-                [UiFont.bold, UiFont.size 20, paddingEach {top=15, right=0, bottom= 5, left= 0}] 
+                subTitleAttrs 
                 (List.map (\child -> child env) children)
         )
         mkText
-
+subTitleAttrs : List (Attribute msg)
+subTitleAttrs = [UiFont.bold, UiFont.size 20, paddingEach {top=12, right=0, bottom= 5, left= 0}]
 
 
 {-| Counter block, renders to `var = [+] value [-]`
@@ -943,7 +1004,8 @@ viewText styles string  =
             styleFlags = (if styles.bold then [UiFont.bold] else []) 
                 ++ (if styles.italic then [UiFont.italic] else [])  
                 ++ (if styles.strike then [UiFont.strike] else [])
-            -- created to solve nowrap issue, but it's not needee, used textColumn
+            -- created to solve nowrap issue, but it's not needeed, used textColumn
+            -- to avoid text wrap in Sheets use sheetBlock, not viewSheet inline
             -- displayInline = [uiAttr (HtmlAttr.style "display" "inline")]
         in
         if List.isEmpty styleFlags then (\_ -> text string)
@@ -961,7 +1023,8 @@ mkText =
                 viewText styles string 
         , replacements = Mark.commonReplacements
         , inlines = 
-        [ viewLink
+        [ viewSheet
+        , viewLink
         , viewEqn
         , viewValue
         , viewValueDiff
@@ -1020,6 +1083,14 @@ viewEqn =
         )
         --renderEquation
         --|> Mark.field "src" Mark.string
+-- NB wraps text in divs, no title, use for partial views or cells, add view field
+-- use sheetBlock for whole sheets with pivotreshaper and editor
+viewSheet : Mark.Record (MarkupEnv -> Element Msg)
+viewSheet =
+    Mark.verbatim "sheet"
+        (\id datasetRef env ->
+            viewSheetByDatasetRefInternal env datasetRef
+        )
 
 viewValue : Mark.Record (MarkupEnv -> Element Msg)
 viewValue =
@@ -1148,6 +1219,18 @@ flattenHtml blockOfList =
             Html.div [] htmlMsgList
         )
         blockOfList
+sheetBlock : Mark.Block (MarkupEnv -> Element Msg)
+sheetBlock =
+    Mark.record "Sheet"
+        (\datasetRef title env ->
+            column []
+                [ el subTitleAttrs (text title)
+                , (viewSheetByDatasetRefInternal env datasetRef)
+                ]
+        )
+        |> Mark.field "datasetRef" Mark.string
+        |> Mark.field "title" Mark.string
+        |> Mark.toBlock
 
 imageBlock : Mark.Block (MarkupEnv -> Element Msg)
 imageBlock =

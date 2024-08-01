@@ -236,11 +236,11 @@ viewInput model =
 viewCommands : Element Msg
 viewCommands  =
         Theme.boxRow "Calc commands" [width <| fillPortion 1, alignTop] <|
-                [ Theme.button []
+                [ Theme.button [width shrink]
                     { onPress = Just (EvalFormulas) -- to force the update of the dataset
                     , label = text <| "Eval formulas" -- ++ toRun
                     }
-                , Theme.button []
+                , Theme.button [width shrink]
                     { onPress = Just (UpdateFormulas ) -- to force the update of the dataset
                     , label = text <| "Update formulas" -- ++ toRun
                     }

@@ -15,7 +15,6 @@
                 ready: () => {
                     MathJax.startup.defaultReady();
                     MathJax.startup.promise = MathJax.startup.promise.then(() => {
-                        // Check if the File System Access API is supported
                         const isFileSystemAccessSupported = 'showSaveFilePicker' in window;
 
                         async function saveFile(data) {
@@ -23,7 +22,6 @@
                             const blob = new Blob([content], { type: 'text/plain' });
 
                             if (isFileSystemAccessSupported) {
-                                // Use the File System Access API
                                 const options = {
                                     suggestedName: path.split('/').pop(),
                                     types: [{
@@ -42,7 +40,6 @@
                                     console.error('Error saving file:', error);
                                 }
                             } else {
-                                // Fallback to download
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement('a');
                                 a.href = url;
@@ -66,44 +63,77 @@
                             saveFile(data);
                         });
 
-                        document.addEventListener('formulaContentChanged', function(event) {
-                            app.ports.formulaContentChanged.send(event.detail);
-                        });
+                        // Log when DOM is fully loaded
+                        // document.addEventListener('DOMContentLoaded', () => {
+                        //     console.log('DOM fully loaded and parsed');
 
-                        // Ensure the custom element is defined before accessing it
-                        customElements.whenDefined('code-mirror-formula-editor').then(() => {
-                            var curFormulaEditor = document.querySelector("code-mirror-formula-editor");
-                            if (curFormulaEditor) {
-                                curFormulaEditor.setAppInstance(app);
-                                console.log('set app in curFormulaEditor');
+                        //     const formulaEditors = document.querySelectorAll('code-mirror-formula-editor');
+                        //     console.log('Found formula editors at DOMContentLoaded:', formulaEditors.length);
 
-                                // Used for content change detection
-                                curFormulaEditor.addEventListener('formulaContentChanged', function(event) {
-                                    app.ports.formulaContentChanged.send(event.detail);
+                        //     if (formulaEditors.length > 0) {
+                        //         formulaEditors.forEach((curFormulaEditor) => {
+                        //             curFormulaEditor.setAppInstance(app);
+                        //             console.log('set app in ' + curFormulaEditor.id);
+
+                        //             curFormulaEditor.addEventListener('formulaContentChanged', function(event) {
+                        //                 app.ports.formulaContentChanged.send(event.detail);
+                        //             });
+                        //         });
+                        //     }
+                        // });
+                        // Delayed initialization to ensure editors are in DOM
+                        setTimeout(() => {
+                            console.log('Delayed DOM check');
+                            const formulaEditors = document.querySelectorAll('code-mirror-formula-editor');
+                            console.log('Found formula editors after delay:', formulaEditors.length);
+
+                            if (formulaEditors.length > 0) {
+                                formulaEditors.forEach((curFormulaEditor) => {
+                                    curFormulaEditor.setAppInstance(app);
+                                    console.log('set app in ' + curFormulaEditor.id);
+
+                                    curFormulaEditor.addEventListener('formulaContentChanged', function(event) {
+                                        app.ports.formulaContentChanged.send(event.detail);
+                                    });
                                 });
+                            } else {
+                                console.log('No code-mirror-formula-editor elements found after delay');
                             }
-                        });
+                            const markupEditors = document.querySelectorAll('code-mirror-markup-editor');
+                            console.log('Found markup editors after delay:', markupEditors.length);
 
-                        // Ensure the custom element is defined before accessing it
-                        customElements.whenDefined('code-mirror-markup-editor').then(() => {
-                            var curMarkupEditor = document.querySelector("code-mirror-markup-editor");
-                            if (curMarkupEditor) {
-                                curMarkupEditor.setAppInstance(app);
-                                console.log('set app in curMarkupEditor');
+                            if (markupEditors.length > 0) {
+                                markupEditors.forEach((curMarkupEditor) => {
+                                    curMarkupEditor.setAppInstance(app);
+                                    console.log('set app in ' + curMarkupEditor.id);
 
-                                // Used for content change detection
-                                curMarkupEditor.addEventListener('markupContentChanged', function(event) {
-                                    app.ports.markupContentChanged.send(event.detail);
+                                    curMarkupEditor.addEventListener('formulaContentChanged', function(event) {
+                                        app.ports.formulaContentChanged.send(event.detail);
+                                    });
                                 });
+                            } else {
+                                console.log('No code-mirror-markup-editor elements found after delay');
                             }
-                        });
+                        }, 100); // Adjust delay as necessary
 
-                        // Handle the openNewTab port
+
+                        // Initialize code-mirror-markup-editor as well
+                        // customElements.whenDefined('code-mirror-markup-editor').then(() => {
+                        //     var curMarkupEditor = document.querySelector("code-mirror-markup-editor");
+                        //     if (curMarkupEditor) {
+                        //         curMarkupEditor.setAppInstance(app);
+                        //         console.log('set app in curMarkupEditor');
+
+                        //         curMarkupEditor.addEventListener('markupContentChanged', function(event) {
+                        //             app.ports.markupContentChanged.send(event.detail);
+                        //         });
+                        //     }
+                        // });
+
                         app.ports.openNewTab.subscribe(function(url) {
                             window.open(url, '_blank');
                         });
 
-                        // Example function for MathJax rendering
                         function renderMathJaxToSvg(math, callback) {
                             const container = document.createElement('div');
                             container.style.display = 'none';
@@ -114,7 +144,7 @@
                                 const svg = container.querySelector('svg');
                                 svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
                                 const svgString = new XMLSerializer().serializeToString(svg);
-                                const encodedSvg = btoa(svgString);  // Base64 encode the SVG string
+                                const encodedSvg = btoa(svgString);
                                 callback(encodedSvg);
                                 document.body.removeChild(container);
                             }).catch(function(err) {
@@ -125,6 +155,7 @@
                 }
             }
         };
+
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/startup.js"></script>
 </head>

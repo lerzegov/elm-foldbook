@@ -12,7 +12,7 @@ import Element.Border as Border
 import Html.Attributes as HtmlAttr exposing (style)
 import MyColors exposing (..)
 import Element.Font as UiFont
-import Dict exposing (Dict)
+import FastDict as Dict exposing (Dict)
 import Array exposing (Array)
 import Dropdown
 

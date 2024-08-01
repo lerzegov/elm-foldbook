@@ -9,6 +9,9 @@ lightGray = rgb255 200 200 200
 darkGray : Color
 darkGray = rgb255 100 100 100
 
+veryLightGray : Color
+veryLightGray = rgb255 240 240 240
+
 -- Other colors as needed
 red : Color
 red = rgb255 255 0 0

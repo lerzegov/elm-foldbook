@@ -5,13 +5,36 @@
         Test page for developing equation management in /foldBook/.
 
 |> Title
+    Model spreadsheets in /foldBook/ with editing
+
+|> Sheet
+    datasetRef = Ce
+    title = Conto economico
+
+
+|> Subtitle
+    Conto economico inline
+
+`Ce`{sheet}
+
+|> Subtitle
+    Scenari inline
+
+`Macro`{sheet}
+
+|> Subtitle
+    Aziende inline
+
+`Az`{sheet}
+
+|> Title
     Equazioni in formato /AsciiMath/
 
 |> Subtitle
     Prova di /value/
 
 Ho inserito qui valori editabili in grigio che diventa azzurrino in modifica e un valore calcolato in giallo. Per dita clic su valore, per finire clic fuori (no Enter perché è sempre in input mode, CancelEditValue interrompe soltanto aggiornamento env.values). Possono accettare soltanto numeri:
-La Alfiero SpA nel 2023 ha realizzato ricavi per `ricavi`{value} euro, con un costo del venduto di `costoVen`{value} euro, producendo un `margine di contribuzione`{valueDiff|arg1 = ricavi, arg2 = costoVen}.
+La Alfiero SpA nel 2023 ha realizzato ricavi per `ricavi`{value} euro, con un costo del venduto di `costoVen`{value} euro, producendo un `margine di contribuzione`{valueDiff|arg2 = costoVen, arg1 = ricavi}.
 
 /Il corsivo non funziona in un paragrafo che comprende elementi inline./
 
@@ -42,9 +65,9 @@ dove `ROE_T`{eqn} indica il livello atteso di lungo periodo del rendimento sul c
 
 |> List
     1. Da fare
-                            – Gestire il caso di edited content multiparagraph o con blocks diversi da quelli ora gestiti (ad esempio ora se metto n perde il testo dopo)
-                                – risolto settando Enter per SaveCell evita inserimento newline in blocchi DescribeText
-                                – TODO differenziare gestione List che ha bisogno di acapo
+                                – Gestire il caso di edited content multiparagraph o con blocks diversi da quelli ora gestiti (ad esempio ora se metto n perde il testo dopo)
+                                    – risolto settando Enter per SaveCell evita inserimento newline in blocchi DescribeText
+                                    – TODO differenziare gestione List che ha bisogno di acapo
 
     -- Visualizzazione ed editing di valori formattati da model.values => DONE
     -- gestione List e Tree
@@ -54,9 +77,9 @@ dove `ROE_T`{eqn} indica il livello atteso di lungo periodo del rendimento sul c
 
 |> List
     1. This is definitely the first thing.
-                                Add all together now
-                                With some Content in the same list item
-                                – lines with double hyphen without blank line are treated as text preceded by a single hyphen
+                                    Add all together now
+                                    With some Content in the same list item
+                                    – lines with double hyphen without blank line are treated as text preceded by a single hyphen
 
     -- Another thing, numbering is auto.
         1. first sublist

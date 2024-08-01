@@ -50,6 +50,7 @@ import Html
 import FastDict as Dict exposing (Dict)
 import Json.Decode as Decode
 import AppUtil exposing (cmdMsg)
+import Time exposing (now)
 
 
 
@@ -63,6 +64,7 @@ type alias Model =
     , hints : List String 
     , editorId : String
     , showFormulaEditor : Bool
+    , showPivotReshaper : Bool
     , showLogs : Bool
     }
 
@@ -70,6 +72,7 @@ initialModel : Result Error Env -> DatasetRef  -> Model
 initialModel env datasetRef  =
     let
         initialShowFormulaEditor = True
+        initialShowPivotReshaper = True
         initialShowLogs = True
         initialCalcModel = CalcEngine.initialModel env datasetRef
         initialXModel = CalcEngine.getXModelFromEnv env |> Maybe.withDefault XModel.emptyXModel
@@ -86,6 +89,7 @@ initialModel env datasetRef  =
     , hints = []
     , editorId = initialEditorId
     , showFormulaEditor = initialShowFormulaEditor
+    , showPivotReshaper = initialShowPivotReshaper
     , showLogs = initialShowLogs
     }
 
@@ -102,6 +106,7 @@ type Msg
     | OpenDataset Navigation.Key String
     | TriggerPageReload
     | ToggleFormulaEditor
+    | TogglePivotReshaper
 
 
 
@@ -317,6 +322,8 @@ update msg prevEnv model =
             ( model, prevEnv, Cmd.none )
         ToggleFormulaEditor ->
             ( { model | showFormulaEditor = not model.showFormulaEditor }, prevEnv, Cmd.none )
+        TogglePivotReshaper ->
+            ( { model | showPivotReshaper = not model.showPivotReshaper }, prevEnv, Cmd.none )
 
 
 
@@ -430,7 +437,6 @@ view key curEnv model  =
         [ row [width fill, spacing 6] [logo, viewTitle curXModel.modelRef]
         , viewDatasetNavTabs key datasetNames model.spreadsheetUIModel.curDataset.ref
         --, (viewNavMenu datasetNames)
-        , viewDatasetDimTrays model lenSpreadsheetWidth
         ]
         -- spreadsheet in pivot table
         , row [ width (px lenSpreadsheetWidth), height shrink ]
@@ -440,24 +446,58 @@ view key curEnv model  =
                 [Element.map CalcMsg <| CalcEngine.viewCommands 
                 , buttonToggleFormulaEditor
                 ]
+             , viewPivotReshaper model lenSpreadsheetWidth
              , viewFormulaEditor model
              -- logging calculation messages, activated via mode.showLogs in Main.init
              , viewLogs model
              ]
         ]
+-- without logo and title
+viewSheet : Result Error Env -> Model -> Element Msg
+viewSheet curEnv model  =
+    let
+        modalView = Element.map SpreadsheetUIMsg <| SpreadsheetUI.spreadsheetModalView model.spreadsheetUIModel
+        lenSpreadsheetWidth = 1200 -- 600px
+        curXModel = curEnv |> CalcEngine.getXModelFromEnv |> Maybe.withDefault XModel.emptyXModel
+        pivotTableView = SpreadsheetUI.viewPivotTableFromSpreadsheetView model.spreadsheetUIModel curXModel
 
-viewDatasetDimTrays : Model -> Int -> Element Msg
-viewDatasetDimTrays model lenSpreadsheetWidth =
-    column [ UiFont.size 14, width (px lenSpreadsheetWidth) ] -- cannot set dynamically to max width of container elements
-            [ Element.map DnDTrayMsg <| DnDTray.pageTrayView model.dndTrayModel
-                -- brought row tray and column tray together for easier reshaping
-            , row [ width fill, height (px 120) ] -- no shrink loses row headers
-                -- in DnDTray all trays are set to width fill
-                    [ Element.map DnDTrayMsg <| DnDTray.rowTrayView model.dndTrayModel
-                    , Element.map DnDTrayMsg <| DnDTray.columnTrayView model.dndTrayModel
-                    , Element.map DnDTrayMsg <| DnDTray.ghostView model.dndTrayModel.dnd model.dndTrayModel.trayData
+    in 
+    column [ inFront modalView ] -- messi 600px larghezza sheet si adatta se superiore no se inferiore
+        [ 
+        -- title and dim trays
+        column [width fill] -- styles of trays set in DnDTray group styles
+        -- spreadsheet in pivot table
+            [ row [ width (px lenSpreadsheetWidth), height shrink ]
+            [ Element.map SpreadsheetUIMsg pivotTableView  ]
+            , column [ width (px lenSpreadsheetWidth), height shrink ]
+                [ row [spacing 10, width fill] 
+                    [Element.map CalcMsg <| CalcEngine.viewCommands 
+                    , buttonToggleFormulaEditor
                     ]
+                , viewPivotReshaper model lenSpreadsheetWidth
+                , viewFormulaEditor model
+                -- logging calculation messages, activated via mode.showLogs in Main.init
+                , viewLogs model
                 ]
+            ]
+        ]
+
+viewPivotReshaper : Model -> Int -> Element Msg
+viewPivotReshaper model lenSpreadsheetWidth =
+    if model.showPivotReshaper then
+        column [ UiFont.size 14, width (px lenSpreadsheetWidth) ] -- cannot set dynamically to max width of container elements
+                [ Element.map DnDTrayMsg <| DnDTray.pageTrayView model.dndTrayModel
+                    -- brought row tray and column tray together for easier reshaping
+                , row [ width fill, height (px 120) ] -- no shrink loses row headers
+                    -- in DnDTray all trays are set to width fill
+                        [ Element.map DnDTrayMsg <| DnDTray.rowTrayView model.dndTrayModel
+                        , Element.map DnDTrayMsg <| DnDTray.columnTrayView model.dndTrayModel
+                        , Element.map DnDTrayMsg <| DnDTray.ghostView model.dndTrayModel.dnd model.dndTrayModel.trayData
+                        ]
+                    ]
+    else
+        Element.none
+
 viewFormulaEditor : Model -> Element Msg
 viewFormulaEditor model =
     let
@@ -475,19 +515,29 @@ viewFormulaEditor model =
     in
     if model.showFormulaEditor then
         column [ padding 20, spacing 10, width fill ]
-            [ row [ UiFont.size 24, UiFont.bold ] [ text "Formula Editor" ]
-            , el [ UiFont.size 16 ] (editorElement  (Just model.editorId) model.calcModel.formulaInput)
+            [ row ([ UiFont.size 24, UiFont.bold, width fill] ++ noWrapAttributes) [ text "Formula Editor" ]
+            , el [ UiFont.size 16, width fill] (editorElement  (Just model.editorId) model.calcModel.formulaInput)
             ]
     else
         Element.none
 
+noWrapAttributes : List (Attribute msg)
+noWrapAttributes =
+    [ Element.htmlAttribute (style "white-space" "nowrap")
+    -- , Element.htmlAttribute (style "overflow" "hidden")
+    -- , Element.htmlAttribute (style "text-overflow" "ellipsis")
+    ]
 buttonToggleFormulaEditor : Element Msg
 buttonToggleFormulaEditor =
-    Theme.boxRow "Formulas" [width <| fillPortion 1, alignTop]
-        [(Theme.button [  ]
+    Theme.boxRow "Show/Hide" ([width <| fillPortion 1, alignTop] )
+        [(Theme.button [width shrink]
             { onPress = Just ToggleFormulaEditor
-            , label = text "Toggle Editor" } )
+            , label = text "Formula Editor" } )
+        , (Theme.button [width shrink]
+            { onPress = Just TogglePivotReshaper
+            , label = text "Pivot Reshaper" } )
         ]
+
 viewLogs : Model -> Element Msg
 viewLogs model =
     if model.showLogs then

@@ -1,5 +1,5 @@
 module SpreadsheetUI exposing (Model, initialModel, update
-        , spreadsheetModalView, focusA1, updateCellUI, updateCellsUI
+        , spreadsheetModalView, updateCellUI, updateCellsUI
         , viewCellInPivot
         , getCurrentSpreadsheetAndIndexFromView, viewPivotTableFromSpreadsheetView
         , updateSpreadsheetFromXModel
@@ -11,7 +11,7 @@ import Platform.Cmd as Cmd
 
 -- NO LONGER USED MyPivotTable
 -- import MyPivotTable exposing (..)
-import Dict exposing (Dict)
+import FastDict as Dict exposing (Dict)
 import Set exposing (Set)
 -- UI
 import Browser.Dom as Dom
@@ -63,6 +63,7 @@ import Element.Font as Font
 import Html exposing (col)
 import XModel exposing (isDataArrayText)
 import Time exposing (Posix)
+import Array exposing (get)
 -- import Ports exposing (focusAndSelect) -- TODO check if needed
 
 
@@ -313,9 +314,9 @@ update msg model xModel=
                 updatedCells =
                     updateCellUI rowIndex colIndex (\cellUIarg -> 
                         { cellUIarg | value = editableValue, isEditing = True }) model.cellsUI
-                cellId = getCellId rowIndex colIndex
+                cellId = getCellIdWithDataset rowIndex colIndex model
                 --focusCmd = focusAndSelect cellId -- per selezionare contenuto TODO CHECK
-                focusCmd = focusCommand (getCellId rowIndex colIndex) 
+                focusCmd = focusCommand (getCellIdWithDataset rowIndex colIndex model) 
             in
             -- ( { model | cells = updatedCells, editingValue = Just initialEditingValue }
             ( { model | cellsUI = updatedCells, escPressed = False }
@@ -372,7 +373,7 @@ update msg model xModel=
             -- , editingValue = Nothing
             }
             , xModel
-            , focusCommand (getCellId rowIndex colIndex) )
+            , focusCommand (getCellIdWithDataset rowIndex colIndex model) )
         NoOp ->
             (model, xModel, Cmd.none)
         -- FocusResult is only a log message that is sent when the focus command is completed
@@ -386,7 +387,7 @@ update msg model xModel=
                     updateCellsUI model.cellsUI updatedSpreadsheet
                 cellToFocus = 
                     let coordTuple = Maybe.withDefault (0, 0) model.selectedCellUI in
-                    getCellId (Tuple.first coordTuple) (Tuple.second coordTuple)
+                    getCellIdWithDataset (Tuple.first coordTuple) (Tuple.second coordTuple) model
             in
             ( { model 
                 | curDataset = updatedDataset
@@ -587,7 +588,7 @@ updateForSelectCellUI model xModel rowIndex coIndex =
     in
     ({ model | cellsUI = selectNewCell, selectedCellUI = Just (rowIndex, coIndex) }
     , xModel
-    , focusCommand (getCellId rowIndex coIndex))
+    , focusCommand (getCellIdWithDataset rowIndex coIndex model))
 
 updateForCancelEdit : Model -> Array2D CellUI
 updateForCancelEdit model =
@@ -654,7 +655,7 @@ viewRowHeaderInPivot model depth span offset rowDepth colDepth rowIndex headerTe
                 , UiFont.bold
                 , Border.width 1
                 , UiFont.size model.defaultFontSize
-                , Background.color lightGray
+                , Background.color veryLightGray
                 -- , Background.color pink
                 --, UiFont.size <| if isHovered then 8 else model.defaultFontSize
                 --, Background.color <| if isHovered then green else lightGray
@@ -665,7 +666,7 @@ viewRowHeaderInPivot model depth span offset rowDepth colDepth rowIndex headerTe
                 , Border.width 1
                 , UiFont.bold
                 , UiFont.size model.defaultFontSize
-                , Background.color lightGray
+                , Background.color veryLightGray
                 -- , UiFont.size <| if isHedgeHeader && isHovered then 10 else model.defaultFontSize
                 -- , Background.color <| if isHedgeHeader && isHovered then green else lightGray
                 ]
@@ -720,7 +721,7 @@ viewColHeaderInPivot model depth span offset rowDepth colDepth colIndex headerTe
                 , Border.width 1
                 --, Border.dashed
                 , UiFont.size model.defaultFontSize
-                , Background.color lightGray
+                , Background.color veryLightGray
                 -- provato a spostare qui ma non funzionano bottoni, resize funziona
                 -- , inFront (if model.showModal && colIndex == adjIndex then 
                 --             spreadsheetModalView model 
@@ -735,7 +736,7 @@ viewColHeaderInPivot model depth span offset rowDepth colDepth colIndex headerTe
                 , UiFont.bold
                 , Border.width 1
                 , UiFont.size model.defaultFontSize
-                , Background.color lightGray
+                , Background.color veryLightGray
                 -- , UiFont.size <| if isHedgeHeader && isHovered then 10 else model.defaultFontSize
                 -- , Background.color <| if isHedgeHeader && isHovered then green else lightGray
                 ]
@@ -756,7 +757,7 @@ viewCellInPivot model rowIndex colIndex rowDepth colDepth  =
                         ]
         -- here cell.value get from celllsUI
         cell = getCellUI rowIndex colIndex model.cellsUI
-        cellId = getCellId rowIndex colIndex
+        cellId = getCellIdWithDataset rowIndex colIndex model
         isText = isCellText rowIndex colIndex model
         cellValue = getCellValue cell
         curWidth = getCurrentColumnWidth model colIndex
@@ -764,7 +765,9 @@ viewCellInPivot model rowIndex colIndex rowDepth colDepth  =
             [ HtmlAttr.id cellId -- HtmlAttr is alias of Html.Attribute
             , HtmlAttr.tabindex (getTabIndex rowIndex colIndex model.nrCols)
             , HtmlEvents.onClick (SelectCell rowIndex colIndex)
-            , HtmlEvents.onDoubleClick (EditCell rowIndex colIndex "")
+            -- HtmlEvents.onDoubleClick (EditCell rowIndex colIndex "")
+            -- tried use in markup but not working in cells either
+            , HtmlEvents.stopPropagationOn "dblclick" (Decode.succeed (EditCell rowIndex colIndex "", True))
             , onKeyDownWithPreventDefault (noEditKeyDecoderWithPreventDefault rowIndex colIndex model.nrRows model.nrCols)
             ]
             |> List.map Element.htmlAttribute
@@ -816,8 +819,6 @@ viewCellInPivot model rowIndex colIndex rowDepth colDepth  =
                 (editCellFormat ++ pivotAttrs)
                 [ input (editCellAttributes) [] ]
 
-                
-            
 
 headerContent : List (Attribute msg) -> String -> String -> Element msg
 headerContent textAlign hoverText headerText =
@@ -920,6 +921,9 @@ getCellId : Int -> Int -> String
 getCellId rowIndex coIndex =
     "cell-" ++ String.fromInt rowIndex ++ "-" ++ String.fromInt coIndex ++ "-input"
 
+getCellIdWithDataset : Int -> Int -> Model -> String
+getCellIdWithDataset rowIndex coIndex model =
+   model.curDataset.ref ++ "-" ++ getCellId rowIndex coIndex
 getTabIndex : Int -> Int -> Int -> Int
 getTabIndex rowIndex coIndex nrCols =
     rowIndex * nrCols + coIndex + 1-- 1 based, needed to avoid wrong focus tabbing from cell(0,0) to cell(0,1)
@@ -1152,17 +1156,13 @@ focusCommand elementId =
     Dom.focus elementId
         |> Task.attempt FocusResult
 
-focusA1 : Cmd Msg
-focusA1 =
-    focusCommand (getCellId 0 0) -- Focus on cell [0,0]
-
 init : DatasetRef -> (Model, XModel, Cmd Msg)
 init datasetRef =
     let
         xModel = XModel.myXModel
         model = initialModel xModel datasetRef
 
-        initialFocusCmd = focusCommand (getCellId 0 0)  -- Focus on cell [0,0]
+        initialFocusCmd = focusCommand (getCellIdWithDataset 0 0 model)  -- Focus on cell [0,0]
     in
     (model, xModel, initialFocusCmd)
 
@@ -1199,7 +1199,7 @@ topLeftCorner gridAreaTopLeft =
         , htmlAttribute <| style "position" "sticky"
         , htmlAttribute <| style "left" "0px"
         , htmlAttribute <| style "z-index" "3"
-        , Background.color lightGray
+        , Background.color veryLightGray
         ]
         [text ""]
 
@@ -1244,7 +1244,7 @@ dataCellsContainer dataCellsArg =
         , htmlAttribute <| style "grid-template-rows" "subgrid"
         -- qui non si blocca nulla quindi tutta la grid
         , htmlAttribute <| style "grid-area" "1/1/-1/-1"
-        , Border.color lightGray
+        , Border.color veryLightGray
         --, width (px 300) -- non fa un tubo
         ]
         -- Replace with actual data cells content

@@ -6,7 +6,7 @@ import Html exposing (Html, div, text)
 import Element exposing (..)
 import Element.Font exposing (Font)
 import Home
-import DatasetPage exposing (Msg(..))
+import DatasetPage exposing (Msg(..), Model)
 import Routes exposing (..)
 import Types exposing (..)
 import Ports exposing (..)
@@ -17,8 +17,7 @@ import TypesXModel exposing (..)
 import FastDict as Dict exposing (Dict)
 import AppUtil exposing (cmdMsg)
 import CalcEngine exposing (getXModelFromEnv, Msg(..))
-import MarkupSource exposing (Msg(..))
-import MarkupFoldbook exposing (Msg(..))
+import MarkupFoldbook exposing (Msg(..), viewSheetByDatasetRef)
 import Html.Attributes exposing (default)
 
 
@@ -29,7 +28,6 @@ type alias Model =
     , datasetModels : Dict String DatasetPage.Model
     , key : Navigation.Key
     , counter : Int
-    , markupSourceModel : MarkupSource.Model
     , markupFoldbookModel : MarkupFoldbook.Model
     -- drives the visibility of the logs in the first line (msgLine in Main) and below the formula editor
     -- (viewLogs in DatasetPage); flag is set in the code here and propagated to DatasetPage.update via update.DatasetMsg here
@@ -41,7 +39,6 @@ type Msg
     | HomeMsg Home.Msg
     | DatasetMsg String DatasetPage.Msg
     | EnvUpdated
-    | MarkupSourceMsg MarkupSource.Msg
     | MarkupFoldbookMsg MarkupFoldbook.Msg
 
 
@@ -71,7 +68,6 @@ init _ url key =
             in
             Dict.insert dSet.ref dPageModel dPageAcc
             ) Dict.empty startDSets
-        initMarkupSourceModel = MarkupSource.initialModel
         initMarkupFoldbookModel = MarkupFoldbook.initialModel
         
         initialModel =
@@ -81,7 +77,6 @@ init _ url key =
             , datasetModels = initDatasetPages
             , key = key
             , counter = 0
-            , markupSourceModel = initMarkupSourceModel
             , markupFoldbookModel = initMarkupFoldbookModel
             , showLogs = initShowLogs
             }
@@ -170,16 +165,15 @@ update msg model =
             , Cmd.batch recalcCmds
             )
 
-        MarkupSourceMsg markupMsg ->
-            let
-                (newMarkupModel, markupCmd) = MarkupSource.update markupMsg model.markupSourceModel
-            in
-            ( { model | markupSourceModel = newMarkupModel }, Cmd.map MarkupSourceMsg markupCmd )
         MarkupFoldbookMsg markupMsg ->
-            let
-                (newMarkupModel, markupCmd) = MarkupFoldbook.update markupMsg model.markupFoldbookModel
-            in
-            ( { model | markupFoldbookModel = newMarkupModel }, Cmd.map MarkupFoldbookMsg markupCmd )
+            case markupMsg of
+                DatasetPageMsgInMarkup datasetRef datasetPageMsg  -> -- rendering sheet in markup
+                    ( model , cmdMsg (DatasetMsg datasetRef datasetPageMsg ))
+                _ -> -- other markup messages
+                    let
+                        (newMarkupModel, markupCmd) = MarkupFoldbook.update markupMsg model.markupFoldbookModel
+                    in
+                    ( { model | markupFoldbookModel = newMarkupModel }, Cmd.map MarkupFoldbookMsg markupCmd )
 
 addMsgLine : String -> Result Error Env -> Result Error Env
 addMsgLine msg env =
@@ -246,10 +240,19 @@ view model =
         bodyContent =
             case model.page of
                 HomePage ->
+                    let
+                        curMarkupModel = model.markupFoldbookModel
+                        curMkEnv = curMarkupModel.mkEnv
+                        updatedMkEnv = { curMkEnv 
+                                       | mainEnv = model.env
+                                       , datasetModels = model.datasetModels
+                                       } 
+                        updatedMarkupModel = { curMarkupModel | mkEnv = updatedMkEnv }
+
+                    in
                     column [width fill] 
                         [(Element.map HomeMsg (Home.view model.homeModel))
-                        -- moved to DatasetPage to keep the app instance together
-                        --, Element.map MarkupSourceMsg (MarkupSource.view model.markupSourceModel)
+                        , Element.map MarkupFoldbookMsg (MarkupFoldbook.view updatedMarkupModel)
                         ]
 
                 DatasetPage datasetName ->
@@ -258,9 +261,8 @@ view model =
                             column [width fill] 
                                 [ msgLine model 
                                 , Element.map (DatasetMsg datasetName) 
-                                    (DatasetPage.view model.key model.env datasetModel)
-                                , Element.map MarkupSourceMsg (MarkupSource.view model.markupSourceModel)
-                                , Element.map MarkupFoldbookMsg (MarkupFoldbook.view model.markupFoldbookModel)
+                                    --(DatasetPage.view model.key model.env datasetModel)
+                                    (DatasetPage.viewSheet model.env datasetModel)
                                 ]
                             
                         Nothing ->
@@ -271,6 +273,8 @@ view model =
     , body = [ ( Element.layout [] bodyContent)
              ]
     }
+
+
 
 msgLine : Model -> Element Msg
 msgLine model =
@@ -299,15 +303,12 @@ subscriptions model =
             Dict.toList model.datasetModels
                 |> List.map (\(datasetName, datasetModel) -> DatasetPage.subscriptions datasetModel |> Sub.map (DatasetMsg datasetName))
     
-        markupSourceSubs = 
-            MarkupSource.subscriptions model.markupSourceModel
-                |> Sub.map MarkupSourceMsg
         markupFoldbookSubs = 
             MarkupFoldbook.subscriptions model.markupFoldbookModel
                 |> Sub.map MarkupFoldbookMsg
     in
     Sub.batch
-        (homeSubs::markupSourceSubs::markupFoldbookSubs::datasetSubs) -- raw handling of list vs singleton subs
+        (homeSubs::markupFoldbookSubs::datasetSubs) -- raw handling of list vs singleton subs
 
 onUrlRequest : Browser.UrlRequest -> Msg
 onUrlRequest urlRequest =

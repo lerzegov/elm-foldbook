@@ -1,9 +1,10 @@
 module TypesMarkup exposing (..)
 
-import Dict exposing (Dict)
-import Dict exposing (values)
+import FastDict as Dict exposing (Dict, values)
 import Mark.Internal.Description as Desc exposing (Description(..))
 import Mark.Internal.Id as Id exposing (Id)
+import DatasetPage exposing (Model)
+import Types exposing (Env, Error(..))
 
 type alias MarkupEnv =
     { values : Values
@@ -13,6 +14,8 @@ type alias MarkupEnv =
     , editState : Maybe EditState
     , parsedDetails : Maybe Desc.Description
     , showValues : ShowValues
+    , datasetModels : Dict String DatasetPage.Model
+    , mainEnv : Result Types.Error Types.Env
     }
 type ShowValues = Editable | NotEditable
 
@@ -24,6 +27,8 @@ emptyMarkupEnv =
     , editState = Nothing
     , parsedDetails = Nothing
     , showValues = NotEditable
+    , datasetModels = Dict.empty
+    , mainEnv = Ok Types.emptyEnv
     }
 type alias EditState =
     { id : Id
