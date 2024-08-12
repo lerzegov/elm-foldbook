@@ -200,7 +200,10 @@ update msg model =
                                 | parsed = Just parsed
                                 , editorMarkupContent = src
                               }
-                            , cmdMsg (ProcessEquations equations)--Cmd.none 
+                            , Cmd.batch 
+                                [ cmdMsg (ProcessEquations equations)
+                                , cmdMsg (MarkupContentChanged src)
+                                ]
                             )
 
                         Mark.Almost partial ->
@@ -210,18 +213,21 @@ update msg model =
                             in
                             ( { modelWithSource
                                 | parsed = Just partial.result
-                                , editorMarkupContent = "# HAS PARTIAL ERRORS\n" ++ src
                                 , errors = partial.errors
                               }
-                            , cmdMsg (ProcessEquations equations) -- Cmd.none 
+                            , Cmd.batch 
+                                [ cmdMsg (ProcessEquations equations)
+                                , cmdMsg (MarkupContentChanged ("# HAS PARTIAL ERRORS\n" ++ src))
+                                ]
                             )
 
                         Mark.Failure errors ->
                             ( { modelWithSource 
                                 | parsed = Nothing
-                                , editorMarkupContent = "# HAS ERRORS\n" ++ src
                                 , errors = errors }
-                            , Cmd.none
+                            , Cmd.batch 
+                                [ cmdMsg (MarkupContentChanged ("# HAS PARTIAL ERRORS\n" ++ src))
+                                ]
                             )
 
                 Err err ->
@@ -586,9 +592,9 @@ viewEditedSource model =
                             , HtmlEvents.on "formulaContentChanged" (Decode.map MarkupContentChanged (Decode.at [ "detail" ] Decode.string)) 
                             ] []
     in
-    column [padding 20, spacing 10, width fill]
+    column [padding 20, spacing 10]
         [ row [UiFont.size 24, UiFont.bold] [ text "Markup Editor" ]
-        , el [UiFont.size 16] codeMirrorElement
+        , el [UiFont.size 16, width (px 1200)] codeMirrorElement
         ]
 
 -- to keep an autonomous main function that can be used in the browser

@@ -1,0 +1,21 @@
+|> Subtitle
+    /List gotchas/: All list items must be separated by a blank line.
+
+|> List
+    1. This is definitely the first thing.
+        Add all together now
+        With some Content in the same list item
+        – lines with double hyphen without blank line are treated as text preceded by a single hyphen
+
+    -- Another thing, numbering is auto.
+        1. first sublist
+        -- more sublist
+            -- indented and not numbered because is 1st of its level
+
+        -- other sublist
+            -- subthing not numbered
+            -- other subthing
+
+    -- and yet, another
+        -- and another one
+            With some content without bullets
