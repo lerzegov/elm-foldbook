@@ -111,7 +111,7 @@ init () =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch 
-    [ receiveSvg (SetSvg)
+    [ receiveLatex ReceiveLatex
     , markupContentChanged  MarkupContentChanged
     ]
 
@@ -123,10 +123,7 @@ type Msg
     = SetValue ( String, Float )
     | SetValueFromString String String 
     | GotSrcToParsed (Result Http.Error String) -- extended to doc with metadata
-    | SetSvg (String, String)
-    | RenderMathJax String
-    | RequestRender String
-    | ProcessEquations (List String)
+    | ReceiveLatex (String, String, String) -- (parentId, latexInput, latexOutput)
     | ActivateEditMode Id
     | UpdateContent String
     | SaveEdit
@@ -201,8 +198,7 @@ update msg model =
                                 , editorMarkupContent = src
                               }
                             , Cmd.batch 
-                                [ cmdMsg (ProcessEquations equations)
-                                , cmdMsg (MarkupContentChanged src)
+                                [ cmdMsg (MarkupContentChanged src)
                                 ]
                             )
 
@@ -216,8 +212,7 @@ update msg model =
                                 , errors = partial.errors
                               }
                             , Cmd.batch 
-                                [ cmdMsg (ProcessEquations equations)
-                                , cmdMsg (MarkupContentChanged ("# HAS PARTIAL ERRORS\n" ++ src))
+                                [ cmdMsg (MarkupContentChanged ("# HAS PARTIAL ERRORS\n" ++ src))
                                 ]
                             )
 
@@ -236,37 +231,34 @@ update msg model =
                             Debug.log "err" err
                     in
                     ( model, Cmd.none )
-        SetSvg (src, svgContent) ->
+
+
+        ReceiveLatex (parentId, latexInput, latexOutput) ->
             let
                 curEnv = model.mkEnv
-                updatedEnv =
-                    { curEnv
-                        | equations =
-                            Dict.insert src
-                                svgContent
-                                curEnv.equations
-                    }
+                maybeId = Id.fromString parentId
+                updatedInline = "`" ++ latexOutput ++ "`{eqn}"
+                parsedContent = parseSourceToBlocks myDocumentWithout updatedInline
+                updatedEquations = Dict.insert latexInput latexOutput curEnv.equations
+                -- Update the inline elements in the document
+                updatedParsedDoc = 
+                    case maybeId of 
+                        Just id ->
+                            updateParsedDocument id parsedContent model.parsed
+                        Nothing -> 
+                            model.parsed
+                updatedEnv = { curEnv | equations = updatedEquations, pendingEqn = Nothing }
             in
-            ( { model | mkEnv = updatedEnv }, Cmd.none )
+            -- Debug.log ("ReceiveLatex: " ++ parentId ++ " -> " ++ latexInput ++ " -> " ++ latexOutput)
+            ( { model 
+                | mkEnv = updatedEnv 
+                , parsed = updatedParsedDoc
+                , source = parsedToSource updatedParsedDoc
+              }, Cmd.none )
 
-        RenderMathJax src ->
-            let
-                curEnv = model.mkEnv
-                updatedEnv = { curEnv | pendingEqn = Just src }
-            in
-            ( { model | mkEnv = updatedEnv }, renderMathJax src )
+        -- ProcessEquations no longer needed, equations are updated by ReceiveLatex
 
-        RequestRender src ->
-            if Dict.member src model.mkEnv.equations then
-                ( model, Cmd.none )
-            else
-                ( model, renderMathJax src )
-        ProcessEquations equations ->
-            let
-                myCmd eqSrc = cmdMsg (RenderMathJax eqSrc)
-                renderCmds equationsArg = List.map myCmd equationsArg
-            in
-            ( model, Cmd.batch (renderCmds equations) )
+
         ActivateEditMode id ->
                     let
                         parsedFound = parsedToParsedDetailsFound model.parsed
@@ -321,10 +313,7 @@ update msg model =
                       , source = parsedToSource updatedParsedDoc
                       , mkEnv = updatedEnv }
                     , 
-                    Cmd.batch [
-                        cmdMsg (ProcessEquations equations)
-                        --, cmdMsg SaveSource -- moved to button to avoid multiple saves
-                    ]
+                    Cmd.none
 
                     )
                 Nothing ->
@@ -759,11 +748,15 @@ extractEquations description =
         Desc.Group { children } ->
             List.concatMap extractEquations children
 
-        Desc.Record { found } ->
-            List.concatMap (extractEquations << Tuple.second) found
+        Desc.Record { name, found } -> -- Record is matched for Sheet and Metadata
+            if name == "eqn" then
+                List.concatMap (extractEquations << Tuple.second) found
+            else
+                []
 
         Desc.DescribeText { text } ->
-            List.concatMap extractFromText text
+            -- Only extract equations if the record name is "eqn"
+            List.concatMap (extractFromText "eqn") text 
 
         Desc.DescribeBlock { found } ->
             extractEquations found
@@ -772,18 +765,29 @@ extractEquations description =
             []
 
 -- Extract equations from text descriptions
-extractFromText : Desc.TextDescription -> List String
-extractFromText textDescription =
-    case textDescription of
-        Desc.InlineBlock { kind, record } ->
-            case kind of
-                SelectString str ->
-                    [str]
-                _ ->
-                    []
-
-        Desc.Styled _ ->
+extractFromText : String -> TextDescription -> List String
+extractFromText inlineName textDesc  =
+    case textDesc of
+        Styled _ ->
+            -- No equations to extract from styled text
             []
+        -- without filter on "eqn" triggered ProcessEquations after rendering source editor
+        InlineBlock { kind, record } ->
+            --Debug.log ("InlineBlock, kind: " ++ Debug.toString kind ++ " record: " ++ Debug.toString record) <|
+            case kind of
+                SelectString eqnSource ->
+                    case record of 
+                        Desc.Record { name, found } ->
+                            if name == inlineName then
+                                [eqnSource]
+                            else
+                                []
+                        _ ->
+                            []
+
+                _ ->
+                    -- Ignore other kinds
+                    []
 
 -- my integration of Szerzo example into editor example with metadata and text
 -- use of this function is to compile the document and return a function that takes the runtime data 
@@ -1064,31 +1068,55 @@ viewTextHtml styles string =
     else
         Html.text string
 
-
-
-
-renderEquation : String -> MarkupEnv -> Element Msg
-renderEquation src env =
+-- searches latexInput in equations dict and renders latexOutput
+renderEquationOld : String -> MarkupEnv -> Element Msg
+renderEquationOld src env =
     if Dict.member src env.equations then
         let
-            svg = Dict.get src env.equations |> Maybe.withDefault ""
+            latexOutput = Dict.get src env.equations |> Maybe.withDefault ""
+            customElement =
+                Html.node "math-quill-edit"
+                    [ HtmlAttr.attribute "id" ("eqn-" ++ src) 
+                    , HtmlAttr.attribute "latex" latexOutput
+                    , HtmlAttr.attribute "style" "border: none;"
+                    ]
+                    []
         in
-        image []
-            { src = "data:image/svg+xml;base64," ++ svg
-            , description = "rendered equation for src: " ++ src
-            }
+        -- Render LaTeX with a div styled using elm-ui
+        Element.html <| customElement
+        
     else
-        el [ UiEvents.onClick (RequestRender src) ] (text "Rendering...")
+        el [ uiAttr (HtmlAttr.id ("eqn-" ++ src))          ]
+            (text ("Failed rendering of eqn: " ++ src))
+
+renderEquation : String -> String -> MarkupEnv -> Element Msg
+renderEquation parentId src _ =
+    let
+        -- Directly render the LaTeX source in a MathQuill element
+        customElement =
+            Html.node "math-quill-edit"
+                [ HtmlAttr.attribute "id" ("eqn-" ++ src)
+                , HtmlAttr.attribute "latex" src
+                , HtmlAttr.attribute "style" "border: none;"
+                , HtmlAttr.attribute "parent-id" parentId
+                ]
+                []
+
+    in
+    -- Render LaTeX with a div styled using elm-ui
+    Element.html <| customElement
+
+-- dummy func to make port visible
 
 
 viewEqn : Mark.Record (MarkupEnv -> Element Msg)
 viewEqn =
     Mark.verbatim "eqn"
         (\id src env ->
-            renderEquation src env
+            let parentId = Id.toString id in
+            renderEquation parentId src env
         )
-        --renderEquation
-        --|> Mark.field "src" Mark.string
+
 -- NB wraps text in divs, no title, use for partial views or cells, add view field
 -- use sheetBlock for whole sheets with pivotreshaper and editor
 viewSheet : Mark.Record (MarkupEnv -> Element Msg)

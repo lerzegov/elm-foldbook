@@ -2,7 +2,7 @@ module Main exposing (..)
 
 import Browser
 import Browser.Navigation as Navigation
-import Html exposing (Html, div, text)
+import Html exposing (Html)
 import Element exposing (..)
 import Element.Font exposing (Font)
 import Home
@@ -263,6 +263,7 @@ view model =
                                 , Element.map (DatasetMsg datasetName) 
                                     --(DatasetPage.view model.key model.env datasetModel)
                                     (DatasetPage.viewSheet model.env datasetModel)
+                                --, text "End of dataset page"  -- used for debugging, is before wild list of equations
                                 ]
                             
                         Nothing ->

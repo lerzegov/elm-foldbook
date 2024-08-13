@@ -29,9 +29,15 @@ port markupContentChanged : (String -> msg) -> Sub msg
 -- port focusAndSelect : String -> Cmd msg
 
 -- markup-foldbook
-port renderMathJax : String -> Cmd msg
 
-port receiveSvg : ((String, String) -> msg) -> Sub msg
+-- mathquill 
+-- port renderMathQuill : (String, String) -> Cmd msg -- (parentId, input)
+
+port receiveLatex : ( ( String, String, String ) -> msg ) -> Sub msg
+
+
+
+
 
 -- Define ports for saving the file
 port saveFile : { content : String, path : String } -> Cmd msg
