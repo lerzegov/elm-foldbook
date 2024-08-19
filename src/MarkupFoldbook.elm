@@ -124,6 +124,7 @@ type Msg
     | SetValueFromString String String 
     | GotSrcToParsed (Result Http.Error String) -- extended to doc with metadata
     | ReceiveLatex (String, String, String) -- (parentId, latexInput, latexOutput)
+    | MathFieldUpdated { parentId : String, value : String }
     | ActivateEditMode Id
     | UpdateContent String
     | SaveEdit
@@ -257,7 +258,28 @@ update msg model =
               }, Cmd.none )
 
         -- ProcessEquations no longer needed, equations are updated by ReceiveLatex
-
+        MathFieldUpdated {parentId, value} ->
+            let
+                curEnv = model.mkEnv
+                maybeId = Id.fromString parentId
+                updatedInline = "`" ++ value ++ "`{eqnLive}"
+                parsedContent = parseSourceToBlocks myDocumentWithout updatedInline
+                updatedEquations = Dict.insert value value curEnv.equations
+                -- Update the inline elements in the document
+                updatedParsedDoc = 
+                    case maybeId of 
+                        Just id ->
+                            updateParsedDocument id parsedContent model.parsed
+                        Nothing -> 
+                            model.parsed
+                updatedEnv = { curEnv | equations = updatedEquations, pendingEqn = Nothing }
+            in
+            -- Debug.log ("ReceiveLatex: " ++ parentId ++ " -> " ++ latexInput ++ " -> " ++ latexOutput)
+            ( { model 
+                | mkEnv = updatedEnv 
+                , parsed = updatedParsedDoc
+                , source = parsedToSource updatedParsedDoc
+              }, Cmd.none )
 
         ActivateEditMode id ->
                     let
@@ -1036,6 +1058,7 @@ mkText =
         [ viewSheet
         , viewLink
         , viewEqn
+        , viewEqnLive
         , viewValue
         , viewValueDiff
         ] -- no inline elements, conflicts with elm-ui
@@ -1108,13 +1131,38 @@ renderEquation parentId src _ =
 
 -- dummy func to make port visible
 
-
+-- mathquill
 viewEqn : Mark.Record (MarkupEnv -> Element Msg)
 viewEqn =
     Mark.verbatim "eqn"
         (\id src env ->
             let parentId = Id.toString id in
             renderEquation parentId src env
+        )
+-- mathlive
+
+renderEquationLive : String -> String -> MarkupEnv -> Element Msg
+renderEquationLive parentId src _ =
+    let
+        -- Directly render the LaTeX source in a MathQuill element
+        customElement =
+            Html.node "math-field"
+                [ HtmlAttr.attribute "id" ("eqn-" ++ src)
+                , HtmlAttr.attribute "value" src
+                , HtmlAttr.attribute "style" "border: none;"
+                , HtmlAttr.attribute "parent-id" parentId
+                ]
+                []
+
+    in
+    -- Render LaTeX with a div styled using elm-ui
+    Element.html <| customElement
+viewEqnLive : Mark.Record (MarkupEnv -> Element Msg)
+viewEqnLive =
+    Mark.verbatim "eqnLive"
+        (\id src env ->
+            let parentId = Id.toString id in
+            renderEquationLive parentId src env
         )
 
 -- NB wraps text in divs, no title, use for partial views or cells, add view field

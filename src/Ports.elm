@@ -33,7 +33,12 @@ port markupContentChanged : (String -> msg) -> Sub msg
 -- mathquill 
 -- port renderMathQuill : (String, String) -> Cmd msg -- (parentId, input)
 
+-- mathquill
 port receiveLatex : ( ( String, String, String ) -> msg ) -> Sub msg
+
+-- mathlive
+-- Define the port that receives an object with `id` and `value` as strings
+port mathFieldInput : ({ id : String, value : String } -> msg) -> Sub msg
 
 
 

@@ -14,10 +14,11 @@
     <!-- MathQuill JS and jQuery -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
     <script src="./dist/mathquill.js"></script>
+    <script src="https://unpkg.com/mathlive"></script>
 
     <script src="./dist/ui.js"></script>
     <script src="./dist/codemirror-bundle.js"></script>
-    <script src="./dist/mathquill-element.js"></script>
+    <script src="./dist/.js"></script>
 
     <script>
         const isFileSystemAccessSupported = 'showSaveFilePicker' in window;
@@ -100,7 +101,7 @@
 
             document.addEventListener('latexContentChanged', function(event) {
                 // Log the entire event to see what is being captured
-                console.log('latexContentChanged event captured:', event);
+                // console.log('latexContentChanged event captured:', event);
 
                 // Destructure the event detail to get latex and parentId
                 const { latex, parentId } = event.detail;
@@ -115,6 +116,20 @@
                 // Send the data to the Elm app
                 app.ports.receiveLatex.send([parentId, latex, latex]);
             });
+
+            document.addEventListener('input', function(event) {
+                // Check if the event target is a <math-field> element
+                if (event.target.tagName === 'MATH-FIELD') {
+                    const mathField = event.target;
+                    const mathFieldId = mathField.id;
+
+                    // Send the value and ID of the math field to Elm via the port
+                    if (mathFieldId) {
+                        app.ports.mathFieldInput.send({ id: mathFieldId, value: mathField.getValue() });
+                    }
+                }
+            });
+
 
 
         }, 100); // Adjust delay as necessary

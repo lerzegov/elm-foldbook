@@ -45,7 +45,7 @@ Sono un’estensione dei DDM nella quale si modella il /free cash flow to equity
 
 `E_0 = \sum_{t=1}^T \frac {FCFE_t}  {(1+r_E)^t} + \frac {E_T}  {(1+ r_E)^T}`{eqn}
 
-`E_T = \frac {FCFE_{T+1}} {r_E - g}`{eqn}
+`E_{T}=\frac{FCFE_{T+1}}{r_{E}-g}+\frac{\sum_{_{j=1}}^{J}\log\left(j\right)}{245}`{eqn}
 
 |> Subtitle
     Modelli di /excess return/
@@ -56,19 +56,11 @@ Sono riconducibili all’approccio EVA /Economic Value Added/ e spiegano il valo
 
 `GwBw_0 = \sum_{t=1}^T \frac {(ROE_t - r_E) BV_{t-1}}  {(1+r_E)^t} + \frac {GwBw_T}  {(1+ r_E)^T}`{eqn}
 
-`GwBw_T = \frac {(ROE_T - r_E) BV_T} {r_E - g}`{eqn}
+`GwBw_{T}=\frac{(ROE_{T}-r_{E})BV_{T}}{r_{E}-g}`{eqn}
 
 dove `ROE_T`{eqn} indica il livello atteso di lungo periodo del rendimento sul capitale proprio.
 
 |> Subtitle
-    /TODO test e sviluppo/
+    Prova di mathlive
 
-|> List
-    -- handle values from sheet expressions
-        – insert/delete text blocks via inline buttons
-        – define yaml content for models and datasets
-        – define yaml content for dataset views and formatting
-    
-    -- use latex to define calculation formulas
-
-    -- define best practices to have models with plain formulas using data list functions to avoid complex expressions
+`E_0 = BV_0 + GwBw_0`{eqnLive}
