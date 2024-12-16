@@ -1,53 +1,121 @@
 module MyColors exposing (..)
 
-import Element exposing (Color, rgb255, rgba)
+import Color
+import Element exposing (fromRgb, rgb255, rgba)
+
+
+
+-- import avh4/elm-color for compatibility with my games and chatGpt apps
+-- helper function
+
+
+uiColor : Color.Color -> Element.Color
+uiColor color =
+    fromRgb <| Color.toRgba color
+
+
 
 -- Define your mnemonic color functions
-lightGray : Color
-lightGray = rgb255 200 200 200
+purple : Element.Color
+purple =
+    Color.purple
+        |> uiColor
 
-darkGray : Color
-darkGray = rgb255 100 100 100
+darkPurple : Element.Color
+darkPurple =
+    Color.darkPurple
+        |> uiColor
 
-veryLightGray : Color
-veryLightGray = rgb255 240 240 240
+orange : Element.Color
+orange =
+    Color.orange
+        |> uiColor
+
+darkOrange : Element.Color
+darkOrange =
+    Color.darkOrange
+        |> uiColor
+
+lightGray : Element.Color
+lightGray =
+    Color.lightGray
+        |> uiColor
+
+
+darkGray : Element.Color
+darkGray =
+    Color.darkGray
+        |> uiColor
+
+
+veryLightGray : Element.Color
+veryLightGray =
+    rgb255 240 240 240
+
+
 
 -- Other colors as needed
-red : Color
-red = rgb255 255 0 0
 
-green : Color
-green = rgb255 0 255 0
 
-paleGreen : Color
-paleGreen = rgb255 207 253 188
+red : Element.Color
+red =
+    Color.lightRed
+        |> uiColor
 
-blue : Color
-blue = rgb255 0 0 255
 
-white : Color
-white = rgb255 255 255 255
+green : Element.Color
+green =
+    Color.green
+        |> uiColor
 
-darkCharcoal : Color
-darkCharcoal = rgb255 0x2E 0x34 0x36
 
-lightRed : Color
+paleGreen : Element.Color
+paleGreen =
+    Color.lightGreen
+        |> uiColor
+
+
+blue : Element.Color
+blue =
+    Color.blue
+        |> uiColor
+
+
+white : Element.Color
+white =
+    Color.white
+        |> uiColor
+
+
+darkCharcoal : Element.Color
+darkCharcoal =
+    Color.darkCharcoal
+        |> uiColor
+
+
+lightRed : Element.Color
 lightRed =
-    rgb255 234 144 136
+    Color.lightRed
+        |> uiColor
 
-lightBlue : Color
+
+lightBlue : Element.Color
 lightBlue =
-    rgb255 136 176 234
+    Color.lightBlue
+        |> uiColor
 
-yellow : Color
+
+yellow : Element.Color
 yellow =
-    rgb255 255 255 0
+    Color.yellow
+        |> uiColor
 
-pink : Color
+
+pink : Element.Color
 pink =
     rgb255 255 192 203
 
-myTransparent : Color
+
+myTransparent : Element.Color
 myTransparent =
     rgba 0 0 0 0
-

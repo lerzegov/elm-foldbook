@@ -12,7 +12,7 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Input as Input
 import Html exposing (Html)
-import Html.Attributes exposing (id)
+import Html.Attributes as HtmlAttr
 
 type alias Model =
     { env : Result Error Env
@@ -49,11 +49,17 @@ view model =
             Just xModel -> xModel.datasetRefs
             Nothing  -> []
     in
-    column [ spacing 10, padding 20 , width fill]
+    column [ spacing 10, padding 0 , width fill
+           , htmlAttribute (HtmlAttr.id "pageHeader")
+           ]
         [ row [width fill] [logo, (header "Welcome to elm-foldBook") ]
-        , textPrompt
-        , datasetListView datasetList
+        -- , textPrompt
+        -- , datasetListView datasetList
         ]
+
+-- view : Model -> Element Msg
+-- view _ = 
+--     Element.none
 
 header : String -> Element Msg
 header title =

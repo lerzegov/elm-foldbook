@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "EsNext",
+    "moduleResolution": "Node", 
+    "lib": ["dom", "es2017"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["srcjs/**/*.ts", "srcjs/customMathLiveConfig.d.ts"],
+  "exclude": ["node_modules"]
+}

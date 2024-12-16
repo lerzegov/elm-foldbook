@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>elm-foldbook</title>
+    <style>
+      /* Add any necessary styles here */
+      .cm-cursor, .cm-dropCursor {
+        border-left: 3px solid !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main></main>
+
+    <script src="ui.js"></script>
+    <script src="codemirror-bundle.js"></script>
+    <script src="mathlive-bundle.js"></script>
+
+    <script>
+      const isFileSystemAccessSupported = 'showSaveFilePicker' in window;
+
+      async function saveFile(data) {
+        const { content, path } = data;
+        const blob = new Blob([content], { type: 'text/plain' });
+        //console.log('content', content);
+        if (isFileSystemAccessSupported) {
+          const options = {
+            suggestedName: path.split('/').pop(),
+            types: [
+              {
+                description: 'Text Files',
+                accept: { 'text/plain': ['.txt', '.emu'] },
+              },
+            ],
+          };
+
+          try {
+            const handle = await window.showSaveFilePicker(options);
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            console.log('File saved successfully.');
+          } catch (error) {
+            console.error('Error saving file:', error);
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = path.split('/').pop();
+          a.click();
+          URL.revokeObjectURL(a.href);
+        }
+      }
+
+      // Initialize the Elm app
+      var app = Elm.Main.init({
+        node: document.querySelector('main'),
+      });
+
+      app.ports.saveFile.subscribe(function (data) {
+        saveFile(data);
+      });
+
+      app.ports.scrollToAnchor.subscribe(function (anchor) {
+        const element = document.getElementById(anchor);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+
+      document.addEventListener('mathliveContentChanged', function (event) {
+        const { id, value, mathJson, result } = event.detail;
+        const container = document.getElementById(id);
+        //console.log('mathJson', JSON.stringify(mathJson));
+
+        if (container) {
+          // Update the result div
+          const resultDiv = container.querySelector('.result');
+          if (resultDiv) {
+            resultDiv.textContent = result;
+          } else {
+            console.error(
+              'No result div found inside the container:',
+              container
+            );
+          }
+
+          // Send data to the Elm app via the port
+          if (app.ports && app.ports.mathFieldInput) {
+            // console.log('Sending mathFieldInput to Elm app:', id, value, mathJson, result);
+            app.ports.mathFieldInput.send({
+              id: id,
+              value: value,
+              mathJson: mathJson, // This should be a JSON object or Encode.Value
+              result: result,
+            });
+          } else {
+            console.error('Elm app or port is not initialized correctly.');
+          }
+        } else {
+          console.error('No container element found with id:', id);
+        }
+      });
+
+      // Delayed initialization to ensure editors are in DOM
+      // NB formula editor are for xarray formulas, not mathlive equations
+      setTimeout(() => {
+        console.log('Delayed DOM check');
+        // MOVED TO INITIALIZE DISPOSE EDITOR PORTS
+        // const formulaEditors = document.querySelectorAll(
+        //   'code-mirror-formula-editor'
+        // );
+        // console.log(
+        //   'Found formula editors after delay:',
+        //   formulaEditors.length
+        // );
+
+        // if (formulaEditors.length > 0) {
+        //   formulaEditors.forEach((curFormulaEditor) => {
+        //     curFormulaEditor.setAppInstance(app);
+        //     console.log('set app in ' + curFormulaEditor.id);
+
+        //     curFormulaEditor.addEventListener(
+        //       'formulaContentChanged',
+        //       function (event) {
+        //         app.ports.formulaContentChanged.send(event.detail);
+        //         console.log('formulaContentChanged in js', event.detail);
+        //       }
+        //     );
+        //   });
+        // } else {
+        //   console.log(
+        //     'No code-mirror-formula-editor elements found after delay'
+        //   );
+        // }
+        const markupEditors = document.querySelectorAll(
+          'code-mirror-markup-editor'
+        );
+        console.log('Found markup editors after delay:', markupEditors.length);
+
+        if (markupEditors.length > 0) {
+          markupEditors.forEach((curMarkupEditor) => {
+            curMarkupEditor.setAppInstance(app);
+            console.log('set app in ' + curMarkupEditor.id);
+
+            curMarkupEditor.addEventListener(
+              'markupContentChanged',
+              function (event) {
+                app.ports.markupContentChanged.send(event.detail);
+                // console.log('markupContentChanged', event.detail);
+              }
+            );
+          });
+        } else {
+          console.log(
+            'No code-mirror-markup-editor elements found after delay'
+          );
+        }
+      }, 50); // Adjust delay as necessary
+      app.ports.initializeEditor.subscribe(function(editorId) {
+            setTimeout(() => {
+                const editor = document.getElementById(editorId);
+                if (editor) {
+                    editor.setAppInstance(app);
+                    editor.addEventListener('formulaContentChanged', function(event) {
+                        const content = event.detail;
+                        console.log('formulaContentChanged in js', event.detail, { editorId, content });
+                        app.ports.formulaContentChanged.send({ editorId, content });
+                    });
+                    console.log('Initialized formula editor with ID:', editorId);
+                } else {
+                    console.log('No formula editor found with ID:', editorId);
+                }
+            }, 50); // Adjust delay as necessary
+        });
+
+        app.ports.disposeEditor.subscribe(function(editorId) {
+            const editor = document.getElementById(editorId);
+            if (editor) {
+                editor.removeEventListener('formulaContentChanged', function(event) {
+                    const content = event.detail;
+                    app.ports.formulaContentChanged.send({ editorId, content });
+                });
+                console.log('Disposed formula editor with ID:', editorId);
+            } else {
+                console.log('No formula editor found with ID:', editorId);
+            }
+        });
+
+      app.ports.openNewTab.subscribe(function (url) {
+        window.open(url, '_blank');
+      });
+      // DEBUGGING CURSOR JUMPING
+      // hard coded to first cell, run:
+      //  logInputEvents();
+      // from console in edit mode
+      function logInputEvents() {
+            var inputField = document.getElementById('Ce-cell-0-0-input');
+            inputField.addEventListener('input', function(event) {
+                    event.stopPropagation();
+                    console.log('Input event:', event);
+                    console.log('Input value before:', inputField.value);
+                    setTimeout(function() {
+                        console.log('Input value after:', inputField.value);
+                        console.log('Cursor position:', inputField.selectionStart);
+                    }, 0);
+                    
+            });
+            inputField.addEventListener('keydown', function(event) {
+                console.log('Keydown event:', event);
+            });
+            inputField.addEventListener('keyup', function(event) {
+                console.log('Keyup event:', event);
+            });
+            inputField.addEventListener('focus', function(event) {
+                console.log('Focus event:', event);
+            });
+            inputField.addEventListener('blur', function(event) {
+                console.log('Blur event:', event);
+            });
+
+      }
+
+        // Call the function to log input events
+     
+    </script>
+  </body>
+</html>

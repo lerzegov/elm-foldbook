@@ -356,6 +356,7 @@ update msg model prevEnv =
                 curXModel = getXModelFromEnv newEnv |> Maybe.withDefault XModel.emptyXModel
                 curDataset = Dict.get model.datasetRef curXModel.datasets |> Maybe.withDefault XModel.emptyDataset
                 updatedDataset = { curDataset | formulas = updatedFormulas }
+                _ = myLog "UpdateFormulas: " (updatedDataset.ref, updatedFormulas)
                 updatedXModel = { curXModel 
                     | datasets = Dict.insert model.datasetRef updatedDataset curXModel.datasets 
                     }

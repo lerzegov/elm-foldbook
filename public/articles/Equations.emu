@@ -1,0 +1,129 @@
+|> Metadata
+    author = Luca Erzegovesi
+    title = Managing Equations in /foldBook/
+    description =
+        Test page for developing equation management in /foldBook/.
+
+|> Title
+    Model spreadsheets in /foldBook/ edited
+
+|> Sheet
+    datasetRef = Ce
+    title = Conto economico
+
+
+|> Sheet
+    datasetRef = Macro
+    title = Scenari
+
+
+|> Sheet
+    datasetRef = Az
+    title = Aziende
+
+
+|> Subtitle
+    Aziende inline per vedere word wrap
+
+`Az`{sheet}
+
+|> Title
+    Equazioni in formato /LaTex/ gestite con editor MathLive
+
+|> Subtitle
+    Prova di /value/
+
+Ho inserito qui valori editabili in grigio che diventa azzurrino in modifica e un valore calcolato in giallo. Per dita clic su valore, per finire clic fuori (no Enter perché è sempre in input mode, CancelEditValue interrompe soltanto aggiornamento env.values). Possono accettare soltanto numeri:
+La Alfiero SpA nel 2023 ha realizzato ricavi per `ricavi`{value} euro, con un costo del venduto di `costoVen`{value} euro, producendo un `margine di contribuzione`{valueDiff|arg1 = ricavi, arg2 = costoVen}.
+
+/Il corsivo non funziona in un paragrafo che comprende elementi inline./
+
+|> Subtitle
+    Modelli di attualizzazione del /free cash flow to equity/
+
+Sono un’estensione dei DDM nella quale si modella il /free cash flow to equity/ (FCFE), che è il flusso di cassa residuale nei confronti degli azionisti generato dalla gestione. Si ha in tal modo la possibilità di pianificare in maniera più articolata i flussi di cassa a carattere non ricorrente (ad esempio per aumenti di capitale e per rimborso o riacquisto di azioni). Il procedimento di calcolo è molto simile a quello dei DDM: si sostituiscono ai dividendi unitari gli FCFE attesi per calcolare il valore corrente di /equity/ `E_0`{eqn} in luogo del prezzo dell’azione, poi ottenuto dividendo `E_0`{eqn} per il numero di azioni. Il tasso di rendimento utilizzato per scontare i flussi è lo stesso. La formula è la seguente:
+
+`E_0=\sum_{t=1}^{T}\frac{FCFE_t} {(1+r_E)^t}+\frac{E_{T}}{(1+r_{E})^{T} }`{eqn}
+
+`E_{T}=\frac{FCFE_{T+1}}{r_{E}-g}+\frac{\sum_{_{j=1}}^{J}\log\left(j\right)}{245}`{eqn}
+
+|> Subtitle
+    Modelli di /excess return/
+
+Sono riconducibili all’approccio EVA /Economic Value Added/ e spiegano il valore dell’equity come somma del suo valore contabile rettificato (`BV`{eqn}) e di una componente di /goodwill-badwill/ (`GwBw`{eqn}) Nella sua versione a due stadi, del tutto analoga a quella utilizzata per i DDM, il modello si traduce nella seguente formula:
+
+`E_0 = BV_0 + GwBw_0`{eqn}
+
+`GwBw_0 = \sum_{t=1}^T \frac {(ROE_t - r_E) BV_{t-1}}  {(1+r_E)^t} + \frac {GwBw_T}  {(1+ r_E)^T}`{eqn}
+
+`GwBw_{T}=\frac{(ROE_{T}-r_{E})BV_{T}}{r_{E}-g}+\sum_{n=0}^{N}\frac{\text{cpn}}{(1+y)^{n}}+\frac{VF}{\left(1+y\right)^{N}}`{eqn}
+
+`\mathrm{ROE}_{T}+364+23-\frac{456}{254}+\frac{67}{34}+\text{cos}(23)`{eqn}
+
+qui test delle funzionalità di macros, inlineShortcuts e mathJson
+
+`\smallfrac{4}{5}+\sum_{j=1}^{10}{\frac{x} {\left(1 + r \right)^j}}+\alpha_{\enclose{actuarial}{n},i}`{eqn}
+
+*sommatorie con \operatorname e \mathrm*
+
+`\operatorname{\mathrm{var}}(R_{P}) = \sum_{i=1}^{N}\sum_{j=1}^{N}x_{i}x_{j}\operatorname{cov}\left(R_{i},R_{j}\right)`{eqn}
+
+*variabili multichar definite con \mathit*
+
+`\mathit{ROE}_{T} = \frac {\mathit{RN}_{T}} {\mathit{CN}_{T}}`{eqn}
+
+formule chimiche
+
+`\ce{H2O} `{eqn}
+
+espressione condizionale
+
+|> Equation
+    f(x) =
+    \begin{cases}
+    x^2 & \text{if } x > 0 \\
+    0 & \text{if } x = 0 \\
+    -x & \text{if } x < 0
+    \end{cases}
+
+custom function and variables => put args after the function macro without () and , between args
+
+|> Equation
+    \Pzero = \PV \maturity \CPN \FV \ytm = \sum_{n=1}^{\maturity}\frac{\CPN}{(1+\ytm)^{n}}+\frac{\FV}{(1+\ytm)^{\maturity}}
+
+Calcolo prezzo con formula esplicita
+
+`\sum_{n=1}^7\frac{6}{(1+0.03)^{n}}+\frac{100}{(1+0.03)^7}`{eqn}
+
+Calcolo del valore attuale di un’obbligazione con cedola annuale e rimborso del capitale alla scadenza. Il valore attuale di un’obbligazione è dato dalla somma dei valori attuali delle cedole e del rimborso del capitale alla scadenza. La formula è la seguente:
+
+aligned environment
+
+|> Equation
+    \begin{aligned}
+        \maturity &\coloneqq 5 \\
+        \CPN &\coloneqq 4 \\
+        \FV &\coloneqq 100 \\
+        \ytm &\coloneqq 0.05 \\
+        \Pzero &= \PV \maturity \CPN \FV \ytm
+    \end{aligned}
+
+multiline environment
+
+|> Equation
+    \begin{multiline}
+        \maturity \coloneqq 5 \\
+        \CPN \coloneqq 4 \\
+        \FV \coloneqq 100 \\
+        \ytm \coloneqq 0.05 \\
+        \Pzero = \PV \maturity \CPN \FV \ytm
+    \end{multiline}
+
+Use of inlineShortcuts
+
+|> Equation
+    \mathit{myFrac} = frc
+
+/NB eqnBlock ha bisogno di latex code indentato con 4 spazi. Non servono """   """/
+
+E qui finisce il testo.

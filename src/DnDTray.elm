@@ -1,6 +1,6 @@
-module DnDTray exposing (Model, Msg(..), initialModel, subscriptions, update, Tray(..), TrayToken, Item
+module DnDTray exposing (Model, Msg(..), initialModel, subscriptions, update, TrayToken, Item
                         , pageTrayView, rowTrayView, columnTrayView, ghostView, sectionStyles
-                        , getPageNames, getRowNames, getColNames, getRowWidths)
+                        , getPageNames, getRowNames, getColNames, getRowWidths, tokenView)
 -- only drag and drop management of token trays
 -- no logic for the content of the trays, set in PersonValue and PersonValuePivot
 import DnDList.Groups
@@ -15,16 +15,13 @@ import Element.Font as UiFont
 import FastDict as Dict exposing (Dict)
 import Array exposing (Array)
 import Dropdown
-
+import TypesXModel exposing (Tray(..))
 
 
 
 -- DATA
 
-type Tray
-    = Row
-    | Column
-    | Page
+
 
 
 type alias TrayToken =
@@ -51,19 +48,19 @@ getTokenWidthsByTray trayType trayData =
 
 getPageNames : List TrayToken -> List String
 getPageNames trayData =
-    getTokenNamesByTray Page trayData
+    getTokenNamesByTray PageTray trayData
 
 getRowNames : List TrayToken -> List String
 getRowNames trayData =
-    getTokenNamesByTray Row trayData
+    getTokenNamesByTray RowTray trayData
 
 getRowWidths : List TrayToken -> List Int
 getRowWidths trayData =
-    getTokenWidthsByTray Row trayData
+    getTokenWidthsByTray RowTray trayData
 
 getColNames : List TrayToken -> List String
 getColNames trayData =
-    getTokenNamesByTray Column trayData
+    getTokenNamesByTray ColumnTray trayData
 
 -- DnD SYSTEM
 
@@ -104,6 +101,7 @@ type alias Item =
 type alias Model =
     -- DnD
     { dnd : DnDList.Groups.Model
+    , viewName : String
     , trayData : List TrayToken -- set by XView.defaultTrayData then modified via Dnd
     -- Dropdown
     , dropdownStates : Dict String (Dropdown.State Item)
@@ -115,6 +113,7 @@ type alias Model =
 initialModel : Model
 initialModel =
     { dnd = system.model -- model of DnDList.Groups
+    , viewName = ""
     , trayData = []
     , dropdownStates = Dict.empty
     , dropdownOptions = Dict.empty
@@ -252,15 +251,15 @@ viewDropdown dropdownId model =
 
 pageTrayView : Model -> Element Msg
 pageTrayView model =
-    trayView model Page lightGray
+    trayView model PageTray lightGray
 
 rowTrayView : Model -> Element Msg
 rowTrayView model =
-    trayView model Row lightBlue
+    trayView model RowTray lightBlue
 
 columnTrayView : Model -> Element Msg
 columnTrayView model =
-    trayView model Column lightRed
+    trayView model ColumnTray pink
 
 -- handles the ghost view of the dragged item
 ghostView : DnDList.Groups.Model -> List TrayToken -> Element Msg
@@ -279,12 +278,12 @@ trayView model tray color  =
     let
         orientation =
             case tray of
-            Row ->
-                row (groupStyles tray color)
-            Column ->
-                column (groupStyles tray color)
-            Page ->
-                row (groupStyles tray color)              
+            RowTray ->
+                wrappedRow (groupStyles tray color)
+            ColumnTray ->
+                wrappedRow (groupStyles tray color) -- changed to row
+            PageTray ->
+                wrappedRow (groupStyles tray color)              
     in
 
     model.trayData
@@ -302,7 +301,7 @@ tokenView model offset localIndex { tray, name, color } =
 
         tokenId : String
         tokenId =
-            "id-" ++ String.fromInt globalIndex
+            "view-" ++ model.viewName ++ "-" ++ String.fromInt globalIndex ++ "-id"
     in
     case ( system.info model.dnd, maybeDragItem model.dnd model.trayData ) of
         ( Just { dragIndex }, Just dragItem ) ->
@@ -361,7 +360,7 @@ tokenView model offset localIndex { tray, name, color } =
                         [ el
                             (itemStyles color ++ List.map htmlAttribute (system.dragEvents globalIndex tokenId))
                             (text name)
-                        , if tray == Page then 
+                        , if tray == PageTray then 
                             viewDropdown name model -- changed dropdownId no tokenId yes name=dim
                         else 
                             none
@@ -398,27 +397,28 @@ groupStyles : Tray -> Color -> List (Element.Attribute Msg)
 groupStyles tray color =
     let
             curWidth = case tray of
-                Row ->
+                RowTray ->
                     width fill
-                Column ->
+                ColumnTray ->
                     width fill-- <| minimum 110 fill
-                Page ->
+                PageTray ->
                     width fill
 
             curHeight = case tray of
-                Row ->
+                RowTray ->
                     height fill -- <| px 30
-                Column ->
+                ColumnTray ->
                     height fill
-                Page ->
+                PageTray ->
                     height <| px 30
             
     in
     [ curHeight
     , Background.color color
-    , paddingXY 2 2
+    , paddingXY 10 10
     , curWidth
-    , spacing 2
+    , spacing 5
+    , Border.rounded 6
     ]
 sectionStyles : List (Element.Attribute msg)
 sectionStyles =
