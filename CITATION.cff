@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "elm-foldbook: a multidimensional spreadsheet prototype with mathematical documents for teaching and research in corporate finance"
+abstract: >-
+  Research prototype, developed June-December 2024, of a browser-based multidimensional
+  spreadsheet written in Elm. Datasets with named dimensions are edited in a pivot-style grid,
+  array-level formulas are written in Elm and evaluated by an extended elm-interpreter, and
+  documents in elm-markup combine text, MathLive equations and live spreadsheets.
+  Version 0.7 dates from 16 December 2024; version 0.7.1 (2026) adds packaging and
+  documentation only. elm-foldbook is the pilot of the Impromptu project.
+authors:
+  - family-names: Erzegovesi
+    given-names: Luca
+    email: luca.erzegovesi@unitn.it
+    affiliation: "Department of Economics and Management, University of Trento"
+version: "0.7.1"
+license: BSD-3-Clause
+repository-code: "https://github.com/lerzegov/elm-foldbook"
+url: "https://theworkbench.lerzegov.org"
+keywords:
+  - multidimensional spreadsheet
+  - financial modelling
+  - corporate finance
+  - teaching
+  - Elm
+  - interpreter
+  - mathematical notation
+references:
+  - type: software
+    title: elm-interpreter
+    authors:
+      - family-names: Taglialegne
+        given-names: Leonardo
+    repository-code: "https://github.com/miniBill/elm-interpreter"
+    license: BSD-3-Clause

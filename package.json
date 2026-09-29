@@ -24,8 +24,8 @@
     "speech-rule-engine": "^4.1.0-beta.11"
   },
   "name": "elm-foldbook",
-  "description": "======= # elm-foldbook A multidimensional calc engine in elm used for teaching and research in corporate finance",
-  "version": "1.0.0",
+  "description": "elm-foldbook: a multidimensional spreadsheet prototype with mathematical documents, for teaching and research in corporate finance",
+  "version": "0.7.1",
   "main": "index.js",
   "directories": {
     "test": "tests"
@@ -35,5 +35,5 @@
   },
   "type": "module",
   "keywords": [],
-  "author": ""
+  "author": "Luca Erzegovesi"
 }

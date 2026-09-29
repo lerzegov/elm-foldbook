@@ -2,9 +2,9 @@
     "type": "application",
     "source-directories": [
         "src",
-        "../lerzegov/elm-interpreter-fork/src",
-        "../lerzegov/elm-interpreter-fork/generated",
-        "../lerzegov/elm-interpreter-fork/helpers"
+        "vendor/elm-interpreter-fork/src",
+        "vendor/elm-interpreter-fork/generated",
+        "vendor/elm-interpreter-fork/helpers"
     ],
     "elm-version": "0.19.1",
     "dependencies": {
