@@ -5,7 +5,8 @@
   "creators": [
     {
       "name": "Erzegovesi, Luca",
-      "affiliation": "Department of Economics and Management, University of Trento"
+      "affiliation": "Department of Economics and Management, University of Trento",
+      "orcid": "0000-0002-9476-4065"
     }
   ],
   "description": "<p>Research prototype of a browser-based multidimensional spreadsheet written in Elm. Datasets with named dimensions are edited in a pivot-style grid, array-level formulas are written in Elm and evaluated by an extended elm-interpreter, and documents in elm-markup combine text, MathLive equations and live spreadsheets. elm-foldbook is the pilot of the Impromptu project.</p><p>Developed June-December 2024. Version 0.7 dates from 16 December 2024 (git tag <code>v0.7</code>). The code was made public in 2026: release 0.7.1 adds packaging (calculation engine vendored, licenses) and release 0.7.2 an updated README; the application source is unchanged from v0.7.</p>",

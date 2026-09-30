@@ -14,6 +14,7 @@ authors:
     given-names: Luca
     email: luca.erzegovesi@unitn.it
     affiliation: "Department of Economics and Management, University of Trento"
+    orcid: "https://orcid.org/0000-0002-9476-4065"
 version: "0.7.2"
 doi: 10.5281/zenodo.23056100
 identifiers:
@@ -44,6 +45,7 @@ references:
     authors:
       - family-names: Erzegovesi
         given-names: Luca
+        orcid: "https://orcid.org/0000-0002-9476-4065"
     doi: 10.5281/zenodo.23056240
     repository-code: "https://github.com/lerzegov/elm-interpreter-fork"
     date-released: "2024-12-18"
