@@ -15,6 +15,17 @@ authors:
     email: luca.erzegovesi@unitn.it
     affiliation: "Department of Economics and Management, University of Trento"
 version: "0.7.2"
+doi: 10.5281/zenodo.23056100
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23056100
+    description: "Zenodo archive of release 0.7.2 (code of version 0.7)"
+  - type: doi
+    value: 10.5281/zenodo.23056099
+    description: "Zenodo concept DOI (all versions)"
+  - type: swh
+    value: "swh:1:rel:1a45a295993b1acee16b332b8dfa3aea2ad3d300"
+    description: "Software Heritage: tag v0.7 (16 December 2024)"
 date-released: "2026-09-30"
 license: BSD-3-Clause
 repository-code: "https://github.com/lerzegov/elm-foldbook"
@@ -28,6 +39,15 @@ keywords:
   - interpreter
   - mathematical notation
 references:
+  - type: software
+    title: "elm-interpreter-fork: multidimensional data model (XModel) and array evaluation for elm-interpreter, calculation engine of elm-foldbook"
+    authors:
+      - family-names: Erzegovesi
+        given-names: Luca
+    doi: 10.5281/zenodo.23056240
+    repository-code: "https://github.com/lerzegov/elm-interpreter-fork"
+    date-released: "2024-12-18"
+    license: BSD-3-Clause
   - type: software
     title: elm-interpreter
     authors:

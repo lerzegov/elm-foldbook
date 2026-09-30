@@ -7,6 +7,10 @@ Luca Erzegovesi, Department of Economics and Management, University of Trento.
 Developed June – December 2024 · reference version **0.7** (16 December 2024) · public releases
 **0.7.1–0.7.2** (2026, packaging and documentation only) · BSD 3-Clause.
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23056100.svg)](https://doi.org/10.5281/zenodo.23056100)
+· Software Heritage (tag v0.7):
+[swh:1:rel:1a45a295993b1acee16b332b8dfa3aea2ad3d300](https://archive.softwareheritage.org/swh:1:rel:1a45a295993b1acee16b332b8dfa3aea2ad3d300)
+
 > **Research prototype.** elm-foldbook was the pilot of **Impromptu**, the multidimensional
 > modelling environment I develop today. Impromptu's Elm front end grew out of the elm-foldbook
 > grid, pivot trays, views and data types, and its calculation engine moved from the browser
@@ -152,4 +156,12 @@ BSD 3-Clause (see [LICENSE](LICENSE)). Built on:
 The hierarchical headers were first prototyped on
 [elm-pivot-table](https://github.com/integral424/elm-pivot-table). See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for all components. To cite this software,
-see [CITATION.cff](CITATION.cff).
+see [CITATION.cff](CITATION.cff):
+
+> Erzegovesi, L. (2026). *elm-foldbook: a multidimensional spreadsheet prototype with mathematical
+> documents for teaching and research in corporate finance* (version 0.7; developed June–December
+> 2024). Zenodo. https://doi.org/10.5281/zenodo.23056100
+
+The calculation engine, [elm-interpreter-fork](https://github.com/lerzegov/elm-interpreter-fork)
+(public since July 2024), is archived separately:
+[10.5281/zenodo.23056240](https://doi.org/10.5281/zenodo.23056240).
