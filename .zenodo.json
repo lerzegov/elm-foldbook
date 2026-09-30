@@ -1,0 +1,37 @@
+{
+  "upload_type": "software",
+  "title": "elm-foldbook: a multidimensional spreadsheet prototype with mathematical documents for teaching and research in corporate finance",
+  "version": "0.7",
+  "creators": [
+    {
+      "name": "Erzegovesi, Luca",
+      "affiliation": "Department of Economics and Management, University of Trento"
+    }
+  ],
+  "description": "<p>Research prototype of a browser-based multidimensional spreadsheet written in Elm. Datasets with named dimensions are edited in a pivot-style grid, array-level formulas are written in Elm and evaluated by an extended elm-interpreter, and documents in elm-markup combine text, MathLive equations and live spreadsheets. elm-foldbook is the pilot of the Impromptu project.</p><p>Developed June-December 2024. Version 0.7 dates from 16 December 2024 (git tag <code>v0.7</code>). The code was made public in 2026: release 0.7.1 adds packaging (calculation engine vendored, licenses) and release 0.7.2 an updated README; the application source is unchanged from v0.7.</p>",
+  "notes": "Developed June-December 2024; version 0.7 of 16 December 2024; made public in 2026. This archive is git tag v0.7.2 of https://github.com/lerzegov/elm-foldbook.",
+  "license": "BSD-3-Clause",
+  "access_right": "open",
+  "language": "eng",
+  "keywords": [
+    "multidimensional spreadsheet",
+    "financial modelling",
+    "corporate finance",
+    "teaching",
+    "Elm",
+    "interpreter",
+    "mathematical notation"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/lerzegov/elm-interpreter-fork",
+      "relation": "requires",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://github.com/miniBill/elm-interpreter",
+      "relation": "isDerivedFrom",
+      "resource_type": "software"
+    }
+  ]
+}

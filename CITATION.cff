@@ -7,14 +7,15 @@ abstract: >-
   spreadsheet written in Elm. Datasets with named dimensions are edited in a pivot-style grid,
   array-level formulas are written in Elm and evaluated by an extended elm-interpreter, and
   documents in elm-markup combine text, MathLive equations and live spreadsheets.
-  Version 0.7 dates from 16 December 2024; version 0.7.1 (2026) adds packaging and
+  Version 0.7 dates from 16 December 2024; releases 0.7.1-0.7.2 (2026) add packaging and
   documentation only. elm-foldbook is the pilot of the Impromptu project.
 authors:
   - family-names: Erzegovesi
     given-names: Luca
     email: luca.erzegovesi@unitn.it
     affiliation: "Department of Economics and Management, University of Trento"
-version: "0.7.1"
+version: "0.7.2"
+date-released: "2026-09-30"
 license: BSD-3-Clause
 repository-code: "https://github.com/lerzegov/elm-foldbook"
 url: "https://theworkbench.lerzegov.org"

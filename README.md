@@ -4,8 +4,8 @@
 research in corporate finance.**
 
 Luca Erzegovesi, Department of Economics and Management, University of Trento.
-Developed June – December 2024 · reference version **0.7** (16 December 2024) · public release
-**0.7.1** (2026, packaging and documentation only) · BSD 3-Clause.
+Developed June – December 2024 · reference version **0.7** (16 December 2024) · public releases
+**0.7.1–0.7.2** (2026, packaging and documentation only) · BSD 3-Clause.
 
 > **Research prototype.** elm-foldbook was the pilot of **Impromptu**, the multidimensional
 > modelling environment I develop today. Impromptu's Elm front end grew out of the elm-foldbook
@@ -138,6 +138,7 @@ Impromptu addresses all of these.
 | 0.4–0.6 | Jul – Aug 2024 | engine moved to the fork; elm-markup documents; MathLive |
 | **v0.7** | **16 Dec 2024** | reworked grid structure handling (reference version) |
 | v0.7.1 | 2026 | public release: engine vendored, licenses, documentation |
+| v0.7.2 | 2026 | updated README; Zenodo metadata |
 
 ## License and credits
 
